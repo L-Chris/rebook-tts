@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto'
 import type { SynthesizeRequest, SynthesizeResult, TtsJob, TtsJobRequest } from './types.js'
 import { getProvider } from './providers/registry.js'
 import { AudioCache } from './cache.js'
+import { getSynthesisTimeoutMs, withTimeout } from './timeout.js'
 
 export class TaskManager {
   private readonly jobs = new Map<string, TtsJob>()
@@ -39,6 +40,8 @@ export class TaskManager {
     job.updatedAt = new Date().toISOString()
     const provider = getProvider(request.provider)
     const concurrency = Math.max(1, Math.min(6, Math.floor(request.concurrency ?? 2)))
+    const timeoutMs = getSynthesisTimeoutMs()
+    const orderedResults: Array<SynthesizeResult | undefined> = []
     let cursor = 0
 
     const runNext = async (): Promise<void> => {
@@ -56,8 +59,13 @@ export class TaskManager {
           volume: request.volume,
           segment,
         }
-        const result = await this.cache.getOrCreate(synthesizeRequest, () => provider.synthesize(synthesizeRequest))
-        job.results.push(result)
+        const result = await withTimeout(
+          this.cache.getOrCreate(synthesizeRequest, () => provider.synthesize(synthesizeRequest)),
+          timeoutMs,
+          `TTS synthesis timed out after ${timeoutMs}ms for segment ${segment.id}`,
+        )
+        orderedResults[index] = result
+        job.results = orderedResults.filter((item): item is SynthesizeResult => Boolean(item))
         job.completed++
       } catch (error) {
         job.failed++

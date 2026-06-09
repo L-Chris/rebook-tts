@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url'
 import { AudioCache } from './cache.js'
 import { getProvider, listProviders } from './providers/registry.js'
 import { TaskManager } from './task-manager.js'
+import { getSynthesisTimeoutMs, withTimeout } from './timeout.js'
 import type { SynthesizeRequest, TtsJobRequest } from './types.js'
 
 const port = Number(process.env.PORT ?? 4177)
@@ -44,7 +45,12 @@ const server = createServer(async (req, res) => {
       const body = await readJson<SynthesizeRequest>(req)
       validateSynthesizeRequest(body)
       const provider = getProvider(body.provider)
-      const result = await cache.getOrCreate(body, () => provider.synthesize(body))
+      const timeoutMs = getSynthesisTimeoutMs()
+      const result = await withTimeout(
+        cache.getOrCreate(body, () => provider.synthesize(body)),
+        timeoutMs,
+        `TTS synthesis timed out after ${timeoutMs}ms for segment ${body.segment.id}`,
+      )
       return sendJson(res, result)
     }
 
