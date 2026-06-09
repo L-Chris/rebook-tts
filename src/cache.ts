@@ -15,7 +15,8 @@ export class AudioCache {
   ): Promise<SynthesizeResult> {
     await mkdir(this.audioDir, { recursive: true })
     const key = getCacheKey(request)
-    const fileName = `${key}.wav`
+    const extension = getAudioExtension(request)
+    const fileName = `${key}.${extension}`
     const filePath = join(this.audioDir, fileName)
     const existing = await exists(filePath)
     if (existing) {
@@ -23,7 +24,7 @@ export class AudioCache {
         segmentId: request.segment.id,
         audioUrl: `${this.publicBasePath}/${fileName}`,
         fileName,
-        mimeType: 'audio/wav',
+        mimeType: getMimeType(extension),
         durationMs: 0,
         cacheHit: true,
       }
@@ -47,12 +48,25 @@ function getCacheKey(request: SynthesizeRequest): string {
     .update(JSON.stringify({
       provider: request.provider ?? 'mock',
       voice: request.segment.voice ?? request.voice ?? '',
+      lang: request.lang ?? '',
+      outputFormat: request.outputFormat ?? '',
       rate: request.segment.rate ?? request.rate ?? '',
       pitch: request.segment.pitch ?? request.pitch ?? '',
       volume: request.segment.volume ?? request.volume ?? '',
       text: request.segment.text,
     }))
     .digest('hex')
+}
+
+function getAudioExtension(request: SynthesizeRequest): 'mp3' | 'wav' {
+  const provider = request.provider ?? 'mock'
+  if (provider === 'edge') return 'mp3'
+  if (request.outputFormat?.includes('mp3')) return 'mp3'
+  return 'wav'
+}
+
+function getMimeType(extension: 'mp3' | 'wav'): string {
+  return extension === 'mp3' ? 'audio/mpeg' : 'audio/wav'
 }
 
 async function exists(path: string): Promise<boolean> {

@@ -26,6 +26,8 @@ export interface TtsSegment {
 export interface SynthesizeRequest {
   provider?: string
   voice?: string
+  lang?: string
+  outputFormat?: string
   rate?: string
   pitch?: string
   volume?: string
@@ -44,6 +46,8 @@ export interface SynthesizeResult {
 export interface TtsJobRequest {
   provider?: string
   voice?: string
+  lang?: string
+  outputFormat?: string
   rate?: string
   pitch?: string
   volume?: string

@@ -95,7 +95,7 @@ function sendJson(res: ServerResponse, value: unknown, status = 200): void {
 }
 
 function sendAudio(res: ServerResponse, fileName: string): void {
-  if (!/^[a-f0-9]{64}\.wav$/.test(fileName)) {
+  if (!/^[a-f0-9]{64}\.(?:wav|mp3)$/.test(fileName)) {
     sendJson(res, { error: 'Invalid audio file name' }, 400)
     return
   }
@@ -109,7 +109,7 @@ function sendAudio(res: ServerResponse, fileName: string): void {
       sendJson(res, { error: 'Audio not found' }, 404)
       return
     }
-    res.writeHead(200, { 'content-type': 'audio/wav' })
+    res.writeHead(200, { 'content-type': fileName.endsWith('.mp3') ? 'audio/mpeg' : 'audio/wav' })
     createReadStream(filePath).pipe(res)
   })
 }

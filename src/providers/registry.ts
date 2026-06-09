@@ -1,3 +1,4 @@
+import { EdgeTtsProvider } from './edge.js'
 import { MockTtsProvider } from './mock.js'
 import type { TtsProvider } from '../types.js'
 
@@ -23,3 +24,4 @@ export function listProviders(): Array<{ id: string, name: string }> {
 }
 
 registerProvider(new MockTtsProvider())
+registerProvider(new EdgeTtsProvider())

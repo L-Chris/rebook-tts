@@ -49,6 +49,8 @@ export class TaskManager {
         const synthesizeRequest: SynthesizeRequest = {
           provider: request.provider,
           voice: request.voice,
+          lang: request.lang,
+          outputFormat: request.outputFormat,
           rate: request.rate,
           pitch: request.pitch,
           volume: request.volume,
