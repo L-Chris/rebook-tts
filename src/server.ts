@@ -72,9 +72,9 @@ const server = createServer(async (req, res) => {
     if (req.method === 'GET' && jobMatch) {
       const jobId = jobMatch[1]
       if (url.pathname.endsWith('/segments')) {
-        const results = tasks.getJobResults(jobId)
-        if (!results) return sendJson(res, { error: 'Job not found' }, 404)
-        return sendJson(res, { results })
+        const result = tasks.getJobResults(jobId)
+        if (!result) return sendJson(res, { error: 'Job not found' }, 404)
+        return sendJson(res, result)
       }
       const job = tasks.getJob(jobId)
       if (!job) return sendJson(res, { error: 'Job not found' }, 404)

@@ -77,6 +77,16 @@ export interface TtsJob {
   updatedAt: string
   error?: string
   results: SynthesizeResult[]
+  failures?: TtsJobFailure[]
+}
+
+export interface TtsJobFailure {
+  index: number
+  segmentId: string
+  speaker?: string
+  voice?: string
+  textPreview: string
+  error: string
 }
 
 export interface TtsProvider {

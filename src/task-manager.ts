@@ -21,6 +21,7 @@ export class TaskManager {
       createdAt: now,
       updatedAt: now,
       results: [],
+      failures: [],
     }
     this.jobs.set(job.id, job)
     void this.runJob(job, request)
@@ -31,8 +32,9 @@ export class TaskManager {
     return this.jobs.get(id) ?? null
   }
 
-  getJobResults(id: string): SynthesizeResult[] | null {
-    return this.jobs.get(id)?.results ?? null
+  getJobResults(id: string): Pick<TtsJob, 'results' | 'failures'> | null {
+    const job = this.jobs.get(id)
+    return job ? { results: job.results, failures: job.failures } : null
   }
 
   private async runJob(job: TtsJob, request: TtsJobRequest): Promise<void> {
@@ -73,8 +75,23 @@ export class TaskManager {
         job.results = orderedResults.filter((item): item is SynthesizeResult => Boolean(item))
         job.completed++
       } catch (error) {
+        const message = error instanceof Error ? error.message : String(error)
         job.failed++
-        job.error = error instanceof Error ? error.message : String(error)
+        job.error = message
+        const failure = {
+          index,
+          segmentId: segment.id,
+          speaker: segment.speaker,
+          voice: segment.voice ?? request.voice,
+          textPreview: previewText(segment.text),
+          error: message,
+        }
+        job.failures = [...(job.failures ?? []), failure]
+        console.error('[rebook-tts] segment failed', JSON.stringify({
+          jobId: job.id,
+          provider: job.provider,
+          ...failure,
+        }))
       } finally {
         job.updatedAt = new Date().toISOString()
         await runNext()
@@ -107,4 +124,9 @@ async function synthesizeWithRetries(
 
 function delay(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms))
+}
+
+function previewText(text: string): string {
+  const normalized = text.replace(/\s+/g, ' ').trim()
+  return normalized.length > 120 ? `${normalized.slice(0, 120)}...` : normalized
 }
