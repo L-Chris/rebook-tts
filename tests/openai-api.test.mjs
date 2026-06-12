@@ -337,7 +337,6 @@ test('POST /v1/audio/voices clones and persists provider-linked voices', async (
   const form = new FormData()
   form.set('provider', 'mock')
   form.set('name', 'Uploaded Mock')
-  form.set('description', 'Uploaded voice sample')
   form.set('audio_sample', new Blob([createTinyWav()], { type: 'audio/wav' }), 'voice.wav')
 
   const response = await fetch(`${baseUrl}/v1/audio/voices`, {
@@ -358,6 +357,58 @@ test('POST /v1/audio/voices clones and persists provider-linked voices', async (
   const voicesPayload = await voicesResponse.json()
   assert.equal(voicesResponse.status, 200)
   assert.ok(voicesPayload.voices.some(voice => voice.voice_id === payload.id))
+})
+
+test('POST /v1/audio/voices only accepts OpenAI voice form fields', async () => {
+  const legacyProvider = new FormData()
+  legacyProvider.set('model', 'mock')
+  legacyProvider.set('name', 'Legacy Provider')
+  legacyProvider.set('audio_sample', new Blob([createTinyWav()], { type: 'audio/wav' }), 'voice.wav')
+  const legacyProviderResponse = await fetch(`${baseUrl}/v1/audio/voices`, {
+    method: 'POST',
+    body: legacyProvider,
+  })
+  const legacyProviderPayload = await legacyProviderResponse.json()
+  assert.equal(legacyProviderResponse.status, 400)
+  assert.match(legacyProviderPayload.error, /Provider is disabled: openai|openai apiKey is required|Unknown provider/)
+
+  for (const field of ['file', 'audio']) {
+    const form = new FormData()
+    form.set('provider', 'mock')
+    form.set('name', `Legacy ${field}`)
+    form.set(field, new Blob([createTinyWav()], { type: 'audio/wav' }), 'voice.wav')
+    const response = await fetch(`${baseUrl}/v1/audio/voices`, {
+      method: 'POST',
+      body: form,
+    })
+    const payload = await response.json()
+    assert.equal(response.status, 400)
+    assert.match(payload.error, /audio_sample is required/)
+  }
+
+  const urlForm = new FormData()
+  urlForm.set('provider', 'mock')
+  urlForm.set('name', 'Legacy URL')
+  urlForm.set('url', 'https://example.com/sample.wav')
+  const urlResponse = await fetch(`${baseUrl}/v1/audio/voices`, {
+    method: 'POST',
+    body: urlForm,
+  })
+  const urlPayload = await urlResponse.json()
+  assert.equal(urlResponse.status, 400)
+  assert.match(urlPayload.error, /audio_sample is required/)
+
+  const audioDataForm = new FormData()
+  audioDataForm.set('provider', 'mock')
+  audioDataForm.set('name', 'Legacy Audio Data')
+  audioDataForm.set('audioData', `data:audio/wav;base64,${createTinyWav().toString('base64')}`)
+  const audioDataResponse = await fetch(`${baseUrl}/v1/audio/voices`, {
+    method: 'POST',
+    body: audioDataForm,
+  })
+  const audioDataPayload = await audioDataResponse.json()
+  assert.equal(audioDataResponse.status, 400)
+  assert.match(audioDataPayload.error, /audio_sample is required/)
 })
 
 test('POST /v1/audio/transcriptions accepts multipart file uploads', async () => {

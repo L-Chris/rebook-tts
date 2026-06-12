@@ -278,7 +278,9 @@ async function createVoiceDesign(req: IncomingMessage, res: ServerResponse): Pro
 
 async function createVoice(req: IncomingMessage, res: ServerResponse): Promise<void> {
   const form = await readMultipartForm(req)
-  const providerId = resolveOpenAiProviderTarget(form.fields.provider, form.fields.model, 'openai', hasVoiceCloneProvider)
+  const providerId = typeof form.fields.provider === 'string' && form.fields.provider.trim()
+    ? form.fields.provider.trim()
+    : 'openai'
   assertPublicProviderAccess(providerId)
   const provider = getVoiceCloneProvider(providerId)
   const context = await getRuntimeConfig(provider.id)
@@ -536,49 +538,17 @@ function normalizeVoiceDesignInput(providerId: string, input: unknown): VoiceDes
 }
 
 async function normalizeVoiceCloneInput(providerId: string, form: Awaited<ReturnType<typeof readMultipartForm>>): Promise<VoiceCloneRequest> {
-  const file = form.files.audio_sample ?? form.files.audio ?? form.files.file
+  const file = form.files.audio_sample
   const name = form.fields.name?.trim()
-  const url = form.fields.url?.trim()
   if (!name) throw new Error('name is required')
-  if (!file && !form.fields.audioData && !url) throw new Error('audio_sample file, url, or audioData is required')
-  if (!file && !form.fields.audioData && url) {
-    return resolveVoiceCloneUrl(providerId, form, url, name)
-  }
+  if (!file) throw new Error('audio_sample is required')
   return {
     provider: providerId,
     name,
-    audioData: file
-      ? `data:${normalizeMimeType(file.contentType)};base64,${file.data.toString('base64')}`
-      : form.fields.audioData,
-    mimeType: file ? normalizeMimeType(file.contentType) : form.fields.mimeType,
-    fileName: file?.fileName,
+    audioData: `data:${normalizeMimeType(file.contentType)};base64,${file.data.toString('base64')}`,
+    mimeType: normalizeMimeType(file.contentType),
+    fileName: file.fileName,
     consent: form.fields.consent,
-    description: form.fields.description,
-    language: form.fields.language,
-    previewText: form.fields.preview_text,
-  }
-}
-
-async function resolveVoiceCloneUrl(
-  providerId: string,
-  form: Awaited<ReturnType<typeof readMultipartForm>>,
-  url: string,
-  name: string,
-): Promise<VoiceCloneRequest> {
-  const response = await fetch(url)
-  if (!response.ok) throw new Error(`Failed to download audio for voice clone: ${response.status}`)
-  const audio = Buffer.from(await response.arrayBuffer())
-  const mimeType = normalizeMimeType(response.headers.get('content-type') ?? undefined)
-  return {
-    provider: providerId,
-    name,
-    audioData: `data:${mimeType};base64,${audio.toString('base64')}`,
-    mimeType,
-    fileName: getFileNameFromUrl(url),
-    consent: form.fields.consent,
-    description: form.fields.description,
-    language: form.fields.language,
-    previewText: form.fields.preview_text,
   }
 }
 
@@ -1064,14 +1034,4 @@ function formatVttTimestamp(seconds: number): string {
 
 function normalizeMimeType(value: string | undefined): string {
   return value?.split(';')[0]?.trim() || 'application/octet-stream'
-}
-
-function getFileNameFromUrl(value: string): string {
-  try {
-    const pathname = new URL(value).pathname
-    const name = pathname.split('/').filter(Boolean).pop()
-    return name || 'audio-sample'
-  } catch {
-    return 'audio-sample'
-  }
 }

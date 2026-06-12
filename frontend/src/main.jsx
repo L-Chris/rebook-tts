@@ -337,14 +337,10 @@ function App() {
     form.set('provider', selectedProvider.id)
     form.set('name', cloneForm.name)
     if (cloneForm.consent.trim()) form.set('consent', cloneForm.consent.trim())
-    if (cloneForm.description.trim()) form.set('description', cloneForm.description.trim())
-    if (cloneForm.language.trim()) form.set('language', cloneForm.language.trim())
     if (cloneFile) {
       form.set('audio_sample', cloneFile)
-    } else if (cloneForm.audioSource.trim()) {
-      appendAudioSource(form, cloneForm.audioSource.trim())
     } else {
-      throw new Error('Choose an audio file or enter an audio source.')
+      throw new Error('Choose an audio file.')
     }
 
     const response = await fetch(apiUrl('/v1/audio/voices', apiBaseUrl), {
@@ -1015,14 +1011,24 @@ function DesignTestForm({ form, onFormChange }) {
 function CloneTestForm({ file, form, onFileChange, onFormChange }) {
   return (
     <div className="grid gap-3 md:grid-cols-2">
-      <AudioSourceControl
-        file={file}
-        form={form}
-        inputId="clone-audio-source"
-        placeholder="https://example.com/sample.wav, data:audio/wav;base64,..."
-        onFileChange={onFileChange}
-        onFormChange={onFormChange}
-      />
+      <div className="grid gap-1.5 text-sm font-semibold md:col-span-2">
+        <label htmlFor="clone-audio-sample">Audio sample</label>
+        <div className="audio-source-actions">
+          <span className="truncate text-sm font-normal text-slate-500">
+            {file ? file.name : 'Choose an audio sample'}
+          </span>
+          <label className="btn-secondary shrink-0 cursor-pointer" htmlFor="clone-audio-sample">
+            Choose file
+          </label>
+          <input
+            className="sr-only"
+            id="clone-audio-sample"
+            type="file"
+            accept="audio/*,video/mp4,video/webm"
+            onChange={event => onFileChange(event.target.files?.[0] || null)}
+          />
+        </div>
+      </div>
       <label className="grid gap-1.5 text-sm font-semibold">
         Name
         <input
@@ -1037,23 +1043,6 @@ function CloneTestForm({ file, form, onFileChange, onFormChange }) {
           className="input"
           value={form.consent}
           onChange={event => onFormChange({ ...form, consent: event.target.value })}
-        />
-      </label>
-      <label className="grid gap-1.5 text-sm font-semibold">
-        Language
-        <input
-          className="input"
-          placeholder="optional"
-          value={form.language}
-          onChange={event => onFormChange({ ...form, language: event.target.value })}
-        />
-      </label>
-      <label className="grid gap-1.5 text-sm font-semibold md:col-span-2">
-        Description
-        <textarea
-          className="textarea min-h-20"
-          value={form.description}
-          onChange={event => onFormChange({ ...form, description: event.target.value })}
         />
       </label>
     </div>
@@ -1178,11 +1167,8 @@ function defaultDesignForm() {
 
 function defaultCloneForm() {
   return {
-    audioSource: '',
     name: 'Cloned voice',
     consent: '',
-    description: '',
-    language: '',
   }
 }
 
