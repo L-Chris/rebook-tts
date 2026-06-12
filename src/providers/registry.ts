@@ -4,7 +4,11 @@ import { BilibiliAsrProvider } from './bilibili-asr.js'
 import { MimoTtsProvider } from './mimo.js'
 import { MockAsrProvider } from './mock-asr.js'
 import { MockTtsProvider } from './mock.js'
-import type { AsrProvider, ProviderDefinition, ProviderRuntimeConfig, TtsProvider } from '../types.js'
+import type { AsrProvider, ProviderDefinition, ProviderFieldDefinition, ProviderRuntimeConfig, TtsProvider } from '../types.js'
+
+const COMMON_PROVIDER_FIELDS: ProviderFieldDefinition[] = [
+  { key: 'timeoutMs', label: 'Timeout (ms)', type: 'number', placeholder: '45000' },
+]
 
 const ttsProviders = new Map<string, TtsProvider>()
 const asrProviders = new Map<string, AsrProvider>()
@@ -59,13 +63,22 @@ export function listProviderDefinitions(configs = new Map<string, ProviderRuntim
       id: provider.id,
       name: provider.name,
       capabilities: provider.capabilities,
-      fields: provider.fields,
+      fields: mergeProviderFields(provider.fields),
       enabled: config.enabled,
       configured: hasConfiguredSecrets(config.secrets),
       config: config.config,
       secrets: maskSecrets(config.secrets),
     }
   })
+}
+
+function mergeProviderFields(fields: readonly ProviderFieldDefinition[] | undefined): ProviderFieldDefinition[] {
+  const merged = [...(fields ?? [])]
+  const keys = new Set(merged.map(field => field.key))
+  for (const field of COMMON_PROVIDER_FIELDS) {
+    if (!keys.has(field.key)) merged.push(field)
+  }
+  return merged
 }
 
 function maskSecrets(secrets: ProviderRuntimeConfig['secrets']): ProviderRuntimeConfig['secrets'] {

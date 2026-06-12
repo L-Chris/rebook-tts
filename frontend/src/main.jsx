@@ -186,13 +186,10 @@ function App() {
     if (transcriptionForm.language.trim()) form.set('language', transcriptionForm.language.trim())
     if (transcriptionFile) {
       form.set('file', transcriptionFile)
-    } else if (transcriptionForm.url.trim()) {
-      form.set('url', transcriptionForm.url.trim())
-    } else if (transcriptionForm.audioData.trim()) {
-      form.set('audioData', transcriptionForm.audioData.trim())
-      if (transcriptionForm.mimeType.trim()) form.set('mimeType', transcriptionForm.mimeType.trim())
+    } else if (transcriptionForm.audioSource.trim()) {
+      appendAudioSource(form, transcriptionForm.audioSource.trim())
     } else {
-      throw new Error('Choose an audio file, URL, or inline audio data.')
+      throw new Error('Choose an audio file or enter an audio source.')
     }
 
     const response = await fetch(apiUrl('/v1/audio/transcriptions', apiBaseUrl), {
@@ -451,7 +448,7 @@ function TranscriptionTestForm({ file, form, onFileChange, onFormChange }) {
   return (
     <div className="grid gap-3 md:grid-cols-2">
       <label className="grid gap-1.5 text-sm font-semibold md:col-span-2">
-        Audio file
+        Audio source
         <input
           className="input"
           type="file"
@@ -459,23 +456,11 @@ function TranscriptionTestForm({ file, form, onFileChange, onFormChange }) {
           onChange={event => onFileChange(event.target.files?.[0] ?? null)}
         />
         {file ? <small className="font-normal text-slate-500">{file.name}</small> : null}
-      </label>
-      <label className="grid gap-1.5 text-sm font-semibold md:col-span-2">
-        Audio URL
-        <input
-          className="input"
-          placeholder="https://example.com/audio.m4a"
-          value={form.url}
-          onChange={event => onFormChange({ ...form, url: event.target.value })}
-        />
-      </label>
-      <label className="grid gap-1.5 text-sm font-semibold md:col-span-2">
-        Inline audio data
         <textarea
           className="textarea min-h-24 font-mono text-xs"
-          placeholder="data:audio/wav;base64,..."
-          value={form.audioData}
-          onChange={event => onFormChange({ ...form, audioData: event.target.value })}
+          placeholder="https://example.com/audio.m4a, BV1..., data:audio/wav;base64,..."
+          value={form.audioSource}
+          onChange={event => onFormChange({ ...form, audioSource: event.target.value })}
         />
       </label>
       <label className="grid gap-1.5 text-sm font-semibold">
@@ -499,15 +484,6 @@ function TranscriptionTestForm({ file, form, onFileChange, onFormChange }) {
           <option value="verbose_json">verbose_json</option>
           <option value="srt">srt</option>
         </select>
-      </label>
-      <label className="grid gap-1.5 text-sm font-semibold">
-        MIME type
-        <input
-          className="input"
-          placeholder="audio/wav"
-          value={form.mimeType}
-          onChange={event => onFormChange({ ...form, mimeType: event.target.value })}
-        />
       </label>
     </div>
   )
@@ -591,11 +567,19 @@ function getDefaultVoice(provider) {
 
 function defaultTranscriptionForm() {
   return {
-    url: '',
-    audioData: '',
+    audioSource: '',
     language: 'auto',
     responseFormat: 'json',
-    mimeType: 'audio/wav',
+  }
+}
+
+function appendAudioSource(form, source) {
+  if (/^https?:\/\//i.test(source)) {
+    form.set('url', source)
+  } else if (/^BV[\dA-Za-z]+$/.test(source)) {
+    form.set('bvid', source)
+  } else {
+    form.set('audioData', source)
   }
 }
 

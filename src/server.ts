@@ -8,7 +8,7 @@ import { ProviderConfigStore } from './config-store.js'
 import { loadDotEnv } from './env.js'
 import { getAsrProvider, getTtsProvider, listAsrProviders, listProviderDefinitions, listTtsProviders } from './providers/registry.js'
 import { sendPublicFile } from './public.js'
-import { getSynthesisTimeoutMs, withTimeout } from './timeout.js'
+import { getProviderTimeoutMs, withTimeout } from './timeout.js'
 import type {
   ProviderConfigInput,
   ProviderRuntimeConfig,
@@ -116,7 +116,7 @@ async function createOpenAiSpeech(req: IncomingMessage, res: ServerResponse): Pr
     outputFormat: responseFormat,
     speed: typeof body.speed === 'number' ? body.speed : undefined,
   })
-  const timeoutMs = getSynthesisTimeoutMs()
+  const timeoutMs = getProviderTimeoutMs(context)
   const result = await withTimeout(
     provider.synthesize(request, context),
     timeoutMs,
@@ -150,7 +150,12 @@ async function createOpenAiTranscription(req: IncomingMessage, res: ServerRespon
     throw new Error('file, url, bvid, or audioData is required')
   }
 
-  const result = await provider.transcribe(request, context)
+  const timeoutMs = getProviderTimeoutMs(context)
+  const result = await withTimeout(
+    provider.transcribe(request, context),
+    timeoutMs,
+    `Transcription timed out after ${timeoutMs}ms for provider ${provider.id}`,
+  )
   const text = result.text ?? ''
   if (responseFormat === 'text' || responseFormat === 'srt') {
     return sendText(res, text, 'text/plain; charset=utf-8')

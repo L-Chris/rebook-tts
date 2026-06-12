@@ -44,4 +44,5 @@ test('Provider definitions include ASR providers', () => {
   const asr = providers.find(item => item.id === 'bilibili-asr')
   assert.equal(asr.capabilities.asr, true)
   assert.ok(asr.fields.some(field => field.key === 'baseUrl'))
+  assert.ok(asr.fields.some(field => field.key === 'timeoutMs' && field.label === 'Timeout (ms)'))
 })

@@ -2,6 +2,7 @@ import { mkdtemp, readFile, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { EdgeTTS } from 'node-edge-tts'
+import { DEFAULT_PROVIDER_TIMEOUT_MS } from '../timeout.js'
 import type { ProviderContext, SynthesizeRequest, TtsProvider, TtsVoice } from '../types.js'
 
 const DEFAULT_VOICE = 'zh-CN-XiaoyiNeural'
@@ -28,7 +29,6 @@ export class EdgeTtsProvider implements TtsProvider {
     { key: 'voicesUrl', label: 'Voice Catalog URL', type: 'url' as const, placeholder: EDGE_VOICES_URL },
     { key: 'trustedClientToken', label: 'Trusted Client Token', type: 'password' as const, secret: true },
     { key: 'proxy', label: 'HTTP Proxy', type: 'url' as const, placeholder: 'http://host.docker.internal:7890' },
-    { key: 'timeoutMs', label: 'Synthesis Timeout', type: 'number' as const, placeholder: '30000' },
   ]
   private voiceCache: { expiresAt: number, voices: TtsVoice[] } | null = null
 
@@ -85,7 +85,7 @@ export class EdgeTtsProvider implements TtsProvider {
         pitch: request.segment.pitch ?? request.pitch ?? 'default',
         rate: request.segment.rate ?? request.rate ?? 'default',
         volume: request.segment.volume ?? request.volume ?? 'default',
-        timeout: getConfigNumber(context, 'timeoutMs') ?? 30000,
+        timeout: getConfigNumber(context, 'timeoutMs') ?? DEFAULT_PROVIDER_TIMEOUT_MS,
         proxy: getConfigString(context, 'proxy'),
       })
 

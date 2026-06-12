@@ -7,6 +7,7 @@ import type {
   TtsProvider,
   TtsVoice,
 } from '../types.js'
+import { getProviderTimeoutMs } from '../timeout.js'
 
 const DEFAULT_BASE_URL = 'https://api.xiaomimimo.com/v1'
 const DEFAULT_TTS_MODEL = 'mimo-v2.5-tts'
@@ -185,7 +186,7 @@ function buildMessages(text: string, voicePrompt?: string, stylePrompt?: string)
 async function postMimoCompletion(apiKey: string, body: unknown, context: ProviderContext): Promise<MimoCompletionResponse> {
   const baseUrl = trimTrailingSlash(getConfigString(context, 'baseUrl') ?? DEFAULT_BASE_URL)
   const url = `${baseUrl}/chat/completions`
-  const timeoutMs = getTimeoutMs(context)
+  const timeoutMs = getProviderTimeoutMs(context)
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), timeoutMs)
   try {
@@ -254,14 +255,6 @@ function getBooleanConfig(context: ProviderContext, key: string, fallback: boole
   return fallback
 }
 
-function getTimeoutMs(context: ProviderContext): number {
-  const configValue = context.config?.timeoutMs
-  const value = typeof configValue === 'number'
-    ? configValue
-    : Number(process.env.TTS_SYNTHESIS_TIMEOUT_MS ?? 45000)
-  return Number.isFinite(value) && value > 0 ? value : 45000
-}
-
 function trimTrailingSlash(value: string): string {
   return value.replace(/\/+$/, '')
 }
@@ -273,7 +266,7 @@ async function resolveAudioDataUrl(request: TranscribeRequest, context: Provider
     return `data:${normalizeMimeType(request.mimeType)};base64,${value}`
   }
   if (!request.url) throw new Error('MiMo ASR requires input.audioData or input.url.')
-  const response = await fetch(request.url, { signal: AbortSignal.timeout(getTimeoutMs(context)) })
+  const response = await fetch(request.url, { signal: AbortSignal.timeout(getProviderTimeoutMs(context)) })
   if (!response.ok) throw new Error(`Failed to download audio for MiMo ASR: ${response.status}`)
   const audio = Buffer.from(await response.arrayBuffer())
   if (audio.length === 0) throw new Error('Downloaded audio for MiMo ASR was empty.')

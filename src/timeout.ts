@@ -1,6 +1,11 @@
-export function getSynthesisTimeoutMs(): number {
-  const value = Number(process.env.TTS_SYNTHESIS_TIMEOUT_MS ?? 45000)
-  return Number.isFinite(value) && value > 0 ? value : 45000
+import type { ProviderContext } from './types.js'
+
+export const DEFAULT_PROVIDER_TIMEOUT_MS = 45000
+
+export function getProviderTimeoutMs(context: ProviderContext = {}): number {
+  const raw = context.config?.timeoutMs
+  const value = typeof raw === 'number' ? raw : Number(raw)
+  return Number.isFinite(value) && value > 0 ? value : DEFAULT_PROVIDER_TIMEOUT_MS
 }
 
 export function withTimeout<T>(promise: Promise<T>, timeoutMs: number, message: string): Promise<T> {
