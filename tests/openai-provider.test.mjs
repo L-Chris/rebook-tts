@@ -88,10 +88,53 @@ test('OpenAI provider sends voice clone requests', async () => {
   assert.equal(result.voice.providerVoiceId, 'voice_openai_1')
 })
 
-test('OpenAI provider exposes TTS and voice clone metadata', async () => {
+test('OpenAI provider sends speech-to-text requests', async () => {
+  let captured
+  globalThis.fetch = async (url, init) => {
+    captured = {
+      url: String(url),
+      headers: init.headers,
+      model: init.body.get('model'),
+      responseFormat: init.body.get('response_format'),
+      language: init.body.get('language'),
+      file: init.body.get('file'),
+    }
+    return new Response(JSON.stringify({
+      text: 'Recognized by OpenAI',
+      segments: [{ start: 0, end: 0.8, text: 'Recognized by OpenAI' }],
+    }), {
+      status: 200,
+      headers: { 'content-type': 'application/json' },
+    })
+  }
+
+  const provider = new OpenAiProvider()
+  const result = await provider.transcribe({
+    audioData: `data:audio/wav;base64,${Buffer.alloc(256, 1).toString('base64')}`,
+    mimeType: 'audio/wav',
+    language: 'en',
+    format: 'raw',
+  }, {
+    config: { asrModel: 'gpt-4o-transcribe' },
+    secrets: { apiKey: 'test-openai-key' },
+  })
+
+  assert.equal(captured.url, 'https://api.openai.com/v1/audio/transcriptions')
+  assert.equal(captured.headers.authorization, 'Bearer test-openai-key')
+  assert.equal(captured.model, 'gpt-4o-transcribe')
+  assert.equal(captured.responseFormat, 'json')
+  assert.equal(captured.language, 'en')
+  assert.equal(captured.file.type, 'audio/wav')
+  assert.equal(result.text, 'Recognized by OpenAI')
+  assert.equal(result.raw.text, 'Recognized by OpenAI')
+  assert.deepEqual(result.segments, [{ from: 0, to: 0.8, content: 'Recognized by OpenAI' }])
+})
+
+test('OpenAI provider exposes TTS, ASR, and voice clone metadata', async () => {
   const provider = new OpenAiProvider()
   const voices = await provider.listVoices()
   assert.equal(provider.capabilities.tts, true)
+  assert.equal(provider.capabilities.asr, true)
   assert.equal(provider.capabilities.voiceClone, true)
   assert.ok(voices.some(voice => voice.id === 'alloy'))
 
@@ -99,5 +142,6 @@ test('OpenAI provider exposes TTS and voice clone metadata', async () => {
   const openai = providers.find(item => item.id === 'openai')
   assert.equal(openai.name, 'OpenAI')
   assert.equal(openai.capabilities.tts, true)
+  assert.equal(openai.capabilities.asr, true)
   assert.equal(openai.capabilities.voiceClone, true)
 })

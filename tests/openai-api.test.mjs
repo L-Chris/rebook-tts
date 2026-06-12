@@ -58,6 +58,7 @@ test('GET /v1/models returns OpenAI-style model objects', async () => {
   assert.equal(mimo.capabilities.asr, true)
   const openai = payload.data.find(model => model.id === 'openai')
   assert.equal(openai.capabilities.tts, true)
+  assert.equal(openai.capabilities.asr, true)
   assert.equal(openai.capabilities.voiceClone, true)
   const modelIds = payload.data.map(model => model.id)
   assert.ok(!modelIds.includes('mock'))

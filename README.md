@@ -10,7 +10,7 @@ into the `ProviderConfig` table.
 ## Providers
 
 - `edge`: Microsoft Edge online TTS.
-- `openai`: OpenAI TTS and custom voice cloning.
+- `openai`: OpenAI TTS, ASR, and custom voice cloning.
 - `mimo`: Xiaomi MiMo TTS with preset voices, voice design, and ASR.
 - `elevenlabs`: ElevenLabs TTS, ASR, sound effects, isolation, voice design, and voice cloning.
 - `bilibili-asr`: ASR through the `bilibili-mcp` Flask API.
@@ -100,7 +100,7 @@ Transcription from a local file:
 
 ```bash
 curl -X POST http://127.0.0.1:4177/v1/audio/transcriptions \
-  -F model=mimo \
+  -F model=openai \
   -F response_format=json \
   -F language=auto \
   -F file=@sample.wav

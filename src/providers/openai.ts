@@ -1,7 +1,10 @@
 import { Blob } from 'node:buffer'
 import type {
+  AsrProvider,
   ProviderContext,
   SynthesizeRequest,
+  TranscribeRequest,
+  TranscribeResult,
   TtsProvider,
   TtsVoice,
   VoiceCloneProvider,
@@ -11,6 +14,7 @@ import type {
 
 const DEFAULT_BASE_URL = 'https://api.openai.com/v1'
 const DEFAULT_TTS_MODEL = 'gpt-4o-mini-tts'
+const DEFAULT_ASR_MODEL = 'gpt-4o-transcribe'
 const DEFAULT_VOICE = 'alloy'
 const DEFAULT_RESPONSE_FORMAT = 'mp3'
 
@@ -21,14 +25,24 @@ interface OpenAiVoicePayload {
   created_at?: number
 }
 
-export class OpenAiProvider implements TtsProvider, VoiceCloneProvider {
+interface OpenAiTranscriptionPayload {
+  text?: string
+  segments?: Array<{
+    start?: number
+    end?: number
+    text?: string
+  }>
+}
+
+export class OpenAiProvider implements TtsProvider, AsrProvider, VoiceCloneProvider {
   readonly id = 'openai'
   readonly name = 'OpenAI'
-  readonly capabilities = { tts: true, voiceClone: true }
+  readonly capabilities = { tts: true, asr: true, voiceClone: true }
   readonly fields = [
     { key: 'apiKey', label: 'API Key', type: 'password' as const, secret: true },
     { key: 'baseUrl', label: 'Base URL', type: 'url' as const, placeholder: DEFAULT_BASE_URL },
     { key: 'ttsModel', label: 'TTS Model', type: 'text' as const, placeholder: DEFAULT_TTS_MODEL },
+    { key: 'asrModel', label: 'ASR Model', type: 'text' as const, placeholder: DEFAULT_ASR_MODEL },
     { key: 'defaultVoice', label: 'Default Voice', type: 'text' as const, placeholder: DEFAULT_VOICE },
     { key: 'responseFormat', label: 'Response Format', type: 'text' as const, placeholder: DEFAULT_RESPONSE_FORMAT },
   ]
@@ -105,6 +119,50 @@ export class OpenAiProvider implements TtsProvider, VoiceCloneProvider {
       raw: payload,
     }
   }
+
+  async transcribe(request: TranscribeRequest, context: ProviderContext = {}): Promise<TranscribeResult> {
+    const apiKey = getApiKey(context)
+    const audio = await resolveTranscriptionAudio(request)
+    const responseFormat = normalizeTranscriptionResponseFormat(request.format)
+    const form = new FormData()
+    form.set('model', getConfigString(context, 'asrModel') ?? DEFAULT_ASR_MODEL)
+    form.set('file', new Blob([audio.data], { type: audio.mimeType }), audio.fileName)
+    form.set('response_format', responseFormat)
+    const language = normalizeLanguage(request.language)
+    if (language) form.set('language', language)
+
+    const response = await fetch(`${getBaseUrl(context)}/audio/transcriptions`, {
+      method: 'POST',
+      headers: { authorization: `Bearer ${apiKey}` },
+      body: form,
+    })
+    if (responseFormat === 'text' || responseFormat === 'srt') {
+      const text = await response.text()
+      if (!response.ok) throw new Error(text || `OpenAI transcription request failed: ${response.status}`)
+      return {
+        provider: this.id,
+        format: request.format ?? 'txt',
+        text: text.trim(),
+      }
+    }
+    const payload = await readJsonResponse<OpenAiTranscriptionPayload>(response)
+    if (!response.ok) {
+      throw new Error(getPayloadError(payload) || `OpenAI transcription request failed: ${response.status}`)
+    }
+    const text = payload.text?.trim() ?? ''
+    if (!text) throw new Error('OpenAI transcription response did not include text.')
+    return {
+      provider: this.id,
+      format: request.format ?? 'txt',
+      text,
+      segments: payload.segments?.map(segment => ({
+        from: segment.start ?? 0,
+        to: segment.end ?? 0,
+        content: segment.text ?? '',
+      })),
+      raw: request.format === 'raw' ? payload : undefined,
+    }
+  }
 }
 
 const OPENAI_PRESET_VOICES: TtsVoice[] = [
@@ -152,6 +210,18 @@ function normalizeResponseFormat(value: string): 'mp3' | 'opus' | 'aac' | 'flac'
   return 'mp3'
 }
 
+function normalizeTranscriptionResponseFormat(format: TranscribeRequest['format']): 'json' | 'text' | 'srt' {
+  if (format === 'txt') return 'text'
+  if (format === 'srt') return 'srt'
+  return 'json'
+}
+
+function normalizeLanguage(value: string | undefined): string | undefined {
+  const trimmed = value?.trim()
+  if (!trimmed || trimmed === 'auto') return undefined
+  return trimmed
+}
+
 function getMimeType(format: string, responseType: string | undefined): string {
   const type = responseType?.split(';')[0]?.trim()
   if (type) return type
@@ -179,6 +249,21 @@ function parseAudioData(value: string, mimeType: string | undefined): { data: Bu
   }
 }
 
+async function resolveTranscriptionAudio(request: TranscribeRequest): Promise<{ data: Buffer, mimeType: string, fileName: string }> {
+  if (request.audioData?.trim()) return parseAudioData(request.audioData.trim(), request.mimeType)
+  if (request.url?.trim()) {
+    const response = await fetch(request.url.trim())
+    if (!response.ok) throw new Error(`Failed to download audio for OpenAI transcription: ${response.status}`)
+    const mimeType = response.headers.get('content-type')?.split(';')[0]?.trim() || request.mimeType || 'application/octet-stream'
+    return {
+      data: Buffer.from(await response.arrayBuffer()),
+      mimeType,
+      fileName: getFileNameFromUrl(request.url.trim(), mimeType),
+    }
+  }
+  throw new Error('OpenAI ASR requires file, url, or audioData.')
+}
+
 function getAudioFileName(mimeType: string): string {
   if (mimeType.includes('wav')) return 'voice.wav'
   if (mimeType.includes('mpeg') || mimeType.includes('mp3')) return 'voice.mp3'
@@ -188,6 +273,15 @@ function getAudioFileName(mimeType: string): string {
   if (mimeType.includes('webm')) return 'voice.webm'
   if (mimeType.includes('mp4')) return 'voice.mp4'
   return 'voice.bin'
+}
+
+function getFileNameFromUrl(value: string, mimeType: string): string {
+  try {
+    const name = new URL(value).pathname.split('/').filter(Boolean).pop()
+    return name || getAudioFileName(mimeType)
+  } catch {
+    return getAudioFileName(mimeType)
+  }
 }
 
 function compactObject<T extends Record<string, unknown>>(value: T): Partial<T> {
