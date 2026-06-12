@@ -60,6 +60,7 @@ test('Provider definitions include default provider with TTS and ASR', () => {
   const providers = listProviderDefinitions()
   const provider = providers.find(item => item.id === 'default')
   assert.equal(provider.capabilities.tts, true)
+  assert.equal(provider.capabilities.ttsStreaming, true)
   assert.equal(provider.capabilities.asr, true)
   assert.ok(provider.fields.some(field => field.key === 'voicesUrl'))
   assert.ok(provider.fields.some(field => field.key === 'timeoutMs' && field.label === 'Timeout (ms)'))

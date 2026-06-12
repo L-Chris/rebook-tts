@@ -1,3 +1,4 @@
+import { randomBytes } from 'node:crypto'
 import { mkdtemp, readFile, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -24,7 +25,7 @@ interface EdgeVoicePayload {
 export class EdgeTtsProvider implements TtsProvider {
   readonly id: string
   readonly name: string
-  readonly capabilities = { tts: true }
+  readonly capabilities = { tts: true, ttsStreaming: true }
   readonly fields = [
     { key: 'voicesUrl', label: 'Voice Catalog URL', type: 'url' as const, placeholder: EDGE_VOICES_URL },
     { key: 'trustedClientToken', label: 'Trusted Client Token', type: 'password' as const, secret: true },
@@ -82,10 +83,11 @@ export class EdgeTtsProvider implements TtsProvider {
     const audioPath = join(tempDir, 'segment.mp3')
     try {
       const voice = request.segment.voice ?? request.voice ?? DEFAULT_VOICE
+      const outputFormat = normalizeEdgeOutputFormat(request.outputFormat)
       const tts = new EdgeTTS({
         voice,
         lang: request.lang ?? inferLangFromVoice(voice),
-        outputFormat: request.outputFormat ?? DEFAULT_OUTPUT_FORMAT,
+        outputFormat,
         saveSubtitles: false,
         pitch: request.segment.pitch ?? request.pitch ?? 'default',
         rate: request.segment.rate ?? request.rate ?? 'default',
@@ -98,13 +100,149 @@ export class EdgeTtsProvider implements TtsProvider {
       const audio = await readFile(audioPath)
       return {
         audio,
-        mimeType: 'audio/mpeg',
+        mimeType: getEdgeMimeType(outputFormat),
         durationMs: 0,
       }
     } finally {
       await rm(tempDir, { recursive: true, force: true })
     }
   }
+
+  async streamSynthesize(request: SynthesizeRequest, context: ProviderContext = {}) {
+    const outputFormat = normalizeEdgeOutputFormat(request.outputFormat)
+    const stream = await createEdgeSpeechStream(request, context)
+    if (request.streamFormat === 'sse') {
+      return {
+        stream: wrapAudioStreamAsSse(stream),
+        mimeType: 'text/event-stream',
+      }
+    }
+    return {
+      stream,
+      mimeType: getEdgeMimeType(outputFormat),
+    }
+  }
+}
+
+async function createEdgeSpeechStream(request: SynthesizeRequest, context: ProviderContext): Promise<ReadableStream<Uint8Array>> {
+  const voice = request.segment.voice ?? request.voice ?? DEFAULT_VOICE
+  const outputFormat = normalizeEdgeOutputFormat(request.outputFormat)
+  const tts = new EdgeTTS({
+    voice,
+    lang: request.lang ?? inferLangFromVoice(voice),
+    outputFormat,
+    saveSubtitles: false,
+    pitch: request.segment.pitch ?? request.pitch ?? 'default',
+    rate: request.segment.rate ?? request.rate ?? 'default',
+    volume: request.segment.volume ?? request.volume ?? 'default',
+    timeout: getConfigNumber(context, 'timeoutMs') ?? DEFAULT_PROVIDER_TIMEOUT_MS,
+    proxy: getConfigString(context, 'proxy'),
+  })
+  const ws = await tts._connectWebSocket()
+  const timeoutMs = getConfigNumber(context, 'timeoutMs') ?? DEFAULT_PROVIDER_TIMEOUT_MS
+
+  let cancelStream: (() => void) | undefined
+  return new ReadableStream<Uint8Array>({
+    start(controller) {
+      let closed = false
+      const timeout = setTimeout(() => {
+        fail(new Error(`Edge TTS stream timed out after ${timeoutMs}ms`))
+      }, timeoutMs)
+      const close = () => {
+        if (closed) return
+        closed = true
+        clearTimeout(timeout)
+        controller.close()
+        ws.close()
+      }
+      const fail = (error: Error) => {
+        if (closed) return
+        closed = true
+        clearTimeout(timeout)
+        controller.error(error)
+        ws.close()
+      }
+      cancelStream = () => {
+        if (closed) return
+        closed = true
+        clearTimeout(timeout)
+        ws.close()
+      }
+
+      ws.on('message', (data: Buffer, isBinary: boolean) => {
+        if (isBinary) {
+          const audio = readEdgeAudioFrame(data)
+          if (audio.length) controller.enqueue(audio)
+          return
+        }
+        const message = data.toString()
+        if (message.includes('Path:turn.end')) close()
+      })
+      ws.on('error', (error: Error) => {
+        fail(error)
+      })
+      ws.on('close', () => close())
+
+      const requestId = randomBytes(16).toString('hex')
+      ws.send(`X-RequestId:${requestId}\r\nContent-Type:application/ssml+xml\r\nPath:ssml\r\n\r\n${buildSsml(request.segment.text, voice, request.lang ?? inferLangFromVoice(voice), request.segment.rate ?? request.rate ?? 'default', request.segment.pitch ?? request.pitch ?? 'default', request.segment.volume ?? request.volume ?? 'default')}`)
+    },
+    cancel() {
+      cancelStream?.()
+    },
+  })
+}
+
+function readEdgeAudioFrame(data: Buffer): Buffer {
+  const separator = 'Path:audio\r\n'
+  const index = data.indexOf(separator)
+  return index >= 0 ? data.subarray(index + separator.length) : Buffer.alloc(0)
+}
+
+function buildSsml(text: string, voice: string, lang: string, rate: string, pitch: string, volume: string): string {
+  return `<speak version="1.0" xmlns="http://www.w3.org/2001/10/synthesis" xmlns:mstts="https://www.w3.org/2001/mstts" xml:lang="${escapeXml(lang)}">
+        <voice name="${escapeXml(voice)}">
+          <prosody rate="${escapeXml(rate)}" pitch="${escapeXml(pitch)}" volume="${escapeXml(volume)}">
+            ${escapeXml(text)}
+          </prosody>
+        </voice>
+      </speak>`
+}
+
+function wrapAudioStreamAsSse(stream: ReadableStream<Uint8Array>): ReadableStream<Uint8Array> {
+  const encoder = new TextEncoder()
+  return new ReadableStream<Uint8Array>({
+    async start(controller) {
+      const reader = stream.getReader()
+      try {
+        while (true) {
+          const { done, value } = await reader.read()
+          if (done) break
+          if (value?.length) {
+            controller.enqueue(encoder.encode(`data: ${JSON.stringify({
+              type: 'audio.delta',
+              audio: Buffer.from(value).toString('base64'),
+            })}\n\n`))
+          }
+        }
+        controller.enqueue(encoder.encode('data: [DONE]\n\n'))
+        controller.close()
+      } catch (error) {
+        controller.error(error)
+      } finally {
+        reader.releaseLock()
+      }
+    },
+  })
+}
+
+function escapeXml(value: string): string {
+  return value.replace(/[<>&"']/g, char => {
+    if (char === '<') return '&lt;'
+    if (char === '>') return '&gt;'
+    if (char === '&') return '&amp;'
+    if (char === '"') return '&quot;'
+    return '&apos;'
+  })
 }
 
 function getConfigString(context: ProviderContext, key: string): string | undefined {
@@ -152,4 +290,20 @@ function normalizeEdgeVoice(voice: EdgeVoicePayload, provider: string): TtsVoice
 function inferLangFromVoice(voice: string): string {
   const match = /^([a-z]{2}-[A-Z]{2})-/.exec(voice)
   return match?.[1] ?? DEFAULT_LANG
+}
+
+function normalizeEdgeOutputFormat(value: string | undefined): string {
+  const normalized = value?.toLowerCase().trim()
+  if (!normalized || normalized === 'mp3') return DEFAULT_OUTPUT_FORMAT
+  if (normalized === 'wav') return 'riff-24khz-16bit-mono-pcm'
+  if (normalized === 'pcm') return 'raw-24khz-16bit-mono-pcm'
+  if (/^(audio|webm|riff|raw)-/.test(normalized)) return value ?? DEFAULT_OUTPUT_FORMAT
+  return DEFAULT_OUTPUT_FORMAT
+}
+
+function getEdgeMimeType(outputFormat: string): string {
+  if (outputFormat.startsWith('riff-')) return 'audio/wav'
+  if (outputFormat.startsWith('raw-')) return 'audio/pcm'
+  if (outputFormat.includes('webm')) return 'audio/webm'
+  return 'audio/mpeg'
 }

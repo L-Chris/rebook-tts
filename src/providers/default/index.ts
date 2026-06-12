@@ -5,7 +5,7 @@ import type { AsrProvider, ProviderContext, ProviderFieldDefinition, SynthesizeR
 export class DefaultProvider implements TtsProvider, AsrProvider {
   readonly id = 'default'
   readonly name = 'Default'
-  readonly capabilities = { tts: true, asr: true }
+  readonly capabilities = { tts: true, ttsStreaming: true, asr: true }
   readonly fields: ProviderFieldDefinition[]
 
   constructor(
@@ -24,6 +24,10 @@ export class DefaultProvider implements TtsProvider, AsrProvider {
 
   synthesize(request: SynthesizeRequest, context?: ProviderContext) {
     return this.edge.synthesize(request, context)
+  }
+
+  streamSynthesize(request: SynthesizeRequest, context?: ProviderContext) {
+    return this.edge.streamSynthesize(request, context)
   }
 
   transcribe(request: TranscribeRequest) {

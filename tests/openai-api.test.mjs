@@ -62,6 +62,7 @@ test('GET /v1/models returns OpenAI-style model objects', async () => {
   assert.equal(openai.capabilities.voiceClone, true)
   const defaultProvider = payload.data.find(model => model.id === 'default')
   assert.equal(defaultProvider.capabilities.tts, true)
+  assert.equal(defaultProvider.capabilities.ttsStreaming, true)
   assert.equal(defaultProvider.capabilities.asr, true)
   const modelIds = payload.data.map(model => model.id)
   assert.ok(!modelIds.includes('edge'))

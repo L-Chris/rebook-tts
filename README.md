@@ -31,8 +31,8 @@ The OpenAI-style `model` field maps to a voxout provider id such as `default`,
 `/v1/audio/speech` also accepts `voice_id` for providers that support stored
 voice records, currently `openai`, `elevenlabs`, and `mimo`.
 For streaming TTS, pass OpenAI-compatible `stream_format` with `audio` or
-`sse`. Streaming support is currently exposed by `openai`, `mimo`, and
-`elevenlabs`; `elevenlabs` supports raw audio streaming only.
+`sse`. Streaming support is currently exposed by `default`, `openai`, `mimo`,
+and `elevenlabs`; `elevenlabs` supports raw audio streaming only.
 
 Stored voices are provider-neutral records. Platform-specific voice ids and
 account bindings are kept in `VoiceProviderLink`, so one voxout `voice_id` can
