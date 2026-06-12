@@ -110,10 +110,15 @@ export class MockAsrProvider implements AsrProvider {
 
   async transcribe(request: TranscribeRequest) {
     const target = request.url ?? (request.audioData ? 'inline audio' : 'unknown audio')
+    const text = `Mock transcript for ${target}`
     return {
       provider: this.id,
       format: request.format ?? 'txt',
-      text: `Mock transcript for ${target}`,
+      text,
+      segments: request.format === 'raw' || request.format === 'srt' || request.format === 'vtt'
+        ? [{ from: 0, to: 1.25, content: text }]
+        : undefined,
+      raw: request.format === 'raw' ? { text } : undefined,
     }
   }
 }

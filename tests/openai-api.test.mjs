@@ -186,6 +186,42 @@ test('POST /v1/audio/speech streams SSE events', async () => {
   assert.match(text, /\[DONE\]/)
 })
 
+test('POST /v1/audio/speech converts WAV provider output to PCM', async () => {
+  const response = await fetch(`${baseUrl}/v1/audio/speech`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      provider: 'mock',
+      input: 'hello from openai compatible speech',
+      voice: 'mock-narrator',
+      response_format: 'pcm',
+    }),
+  })
+  const audio = Buffer.from(await response.arrayBuffer())
+
+  assert.equal(response.status, 200)
+  assert.match(response.headers.get('content-type'), /^audio\/pcm/)
+  assert.notEqual(audio.subarray(0, 4).toString('ascii'), 'RIFF')
+  assert.ok(audio.length > 0)
+})
+
+test('POST /v1/audio/speech rejects unsupported provider response formats', async () => {
+  const response = await fetch(`${baseUrl}/v1/audio/speech`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      provider: 'mock',
+      input: 'hello from openai compatible speech',
+      voice: 'mock-narrator',
+      response_format: 'flac',
+    }),
+  })
+  const payload = await response.json()
+
+  assert.equal(response.status, 400)
+  assert.match(payload.error, /cannot synthesize response_format "flac"/)
+})
+
 test('POST /v1/audio/effect returns generated audio bytes', async () => {
   const response = await fetch(`${baseUrl}/v1/audio/effect`, {
     method: 'POST',
@@ -323,6 +359,26 @@ test('POST /v1/audio/transcriptions supports text response format', async () => 
   assert.equal(response.status, 200)
   assert.match(response.headers.get('content-type'), /^text\/plain/)
   assert.equal(text, 'Mock transcript for inline audio')
+})
+
+test('POST /v1/audio/transcriptions converts provider segments to VTT', async () => {
+  const form = new FormData()
+  form.set('provider', 'mock-asr')
+  form.set('model', 'mock-asr-model')
+  form.set('response_format', 'vtt')
+  form.set('file', new Blob([Buffer.from('fake audio bytes')], { type: 'audio/wav' }), 'sample.wav')
+
+  const response = await fetch(`${baseUrl}/v1/audio/transcriptions`, {
+    method: 'POST',
+    body: form,
+  })
+  const text = await response.text()
+
+  assert.equal(response.status, 200)
+  assert.match(response.headers.get('content-type'), /^text\/vtt/)
+  assert.match(text, /^WEBVTT/)
+  assert.match(text, /00:00:00\.000 --> 00:00:01\.250/)
+  assert.match(text, /Mock transcript for inline audio/)
 })
 
 test('POST /v1/audio/transcriptions treats OpenAI ASR models as models, not providers', async () => {
