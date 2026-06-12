@@ -144,4 +144,6 @@ test('OpenAI provider exposes TTS, ASR, and voice clone metadata', async () => {
   assert.equal(openai.capabilities.tts, true)
   assert.equal(openai.capabilities.asr, true)
   assert.equal(openai.capabilities.voiceClone, true)
+  assert.ok(openai.fields.find(field => field.key === 'ttsModel').options.includes('gpt-4o-mini-tts'))
+  assert.ok(openai.fields.find(field => field.key === 'asrModel').options.includes('gpt-4o-transcribe'))
 })

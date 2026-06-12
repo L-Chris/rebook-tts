@@ -24,6 +24,8 @@ const DEFAULT_VOICE_CLONE_MODEL = 'mimo-v2.5-tts-voiceclone'
 const DEFAULT_VOICE = 'mimo_default'
 const DEFAULT_FORMAT = 'wav'
 const DEFAULT_VOICE_SAMPLE_TEXT = '你好，我会用这个声音为角色说话。'
+const MIMO_TTS_MODELS = [DEFAULT_TTS_MODEL]
+const MIMO_ASR_MODELS = [DEFAULT_ASR_MODEL]
 
 interface MimoCompletionResponse {
   choices?: Array<{
@@ -47,8 +49,8 @@ export class MimoTtsProvider implements TtsProvider, AsrProvider, VoiceDesignPro
   readonly fields = [
     { key: 'apiKey', label: 'API Key', type: 'password' as const, secret: true },
     { key: 'baseUrl', label: 'Base URL', type: 'url' as const, placeholder: DEFAULT_BASE_URL },
-    { key: 'ttsModel', label: 'TTS Model', type: 'text' as const, placeholder: DEFAULT_TTS_MODEL },
-    { key: 'asrModel', label: 'ASR Model', type: 'text' as const, placeholder: DEFAULT_ASR_MODEL },
+    { key: 'ttsModel', label: 'TTS Model', type: 'text' as const, placeholder: DEFAULT_TTS_MODEL, options: MIMO_TTS_MODELS },
+    { key: 'asrModel', label: 'ASR Model', type: 'text' as const, placeholder: DEFAULT_ASR_MODEL, options: MIMO_ASR_MODELS },
     { key: 'voiceDesignModel', label: 'Voice Design Model', type: 'text' as const, placeholder: DEFAULT_VOICE_DESIGN_MODEL },
     { key: 'voiceCloneModel', label: 'Voice Clone Model', type: 'text' as const, placeholder: DEFAULT_VOICE_CLONE_MODEL },
     { key: 'format', label: 'Output Format', type: 'text' as const, placeholder: DEFAULT_FORMAT },

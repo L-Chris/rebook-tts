@@ -25,6 +25,13 @@ const DEFAULT_ASR_MODEL = 'scribe_v2'
 const DEFAULT_SOUND_EFFECT_MODEL = 'eleven_text_to_sound_v2'
 const DEFAULT_VOICE_ID = 'JBFqnCBsd6RMkjVDRZzb'
 const DEFAULT_OUTPUT_FORMAT = 'mp3_44100_128'
+const ELEVENLABS_TTS_MODELS = [
+  'eleven_multilingual_v2',
+  'eleven_turbo_v2_5',
+  'eleven_flash_v2_5',
+  'eleven_v3',
+]
+const ELEVENLABS_ASR_MODELS = ['scribe_v2', 'scribe_v1']
 
 interface ElevenLabsVoicePayload {
   voice_id?: string
@@ -65,8 +72,8 @@ export class ElevenLabsProvider implements TtsProvider, AsrProvider, SoundEffect
   readonly fields = [
     { key: 'apiKey', label: 'API Key', type: 'password' as const, secret: true },
     { key: 'baseUrl', label: 'Base URL', type: 'url' as const, placeholder: DEFAULT_BASE_URL },
-    { key: 'ttsModel', label: 'TTS Model', type: 'text' as const, placeholder: DEFAULT_TTS_MODEL },
-    { key: 'asrModel', label: 'ASR Model', type: 'text' as const, placeholder: DEFAULT_ASR_MODEL },
+    { key: 'ttsModel', label: 'TTS Model', type: 'text' as const, placeholder: DEFAULT_TTS_MODEL, options: ELEVENLABS_TTS_MODELS },
+    { key: 'asrModel', label: 'ASR Model', type: 'text' as const, placeholder: DEFAULT_ASR_MODEL, options: ELEVENLABS_ASR_MODELS },
     { key: 'soundEffectModel', label: 'Sound Effect Model', type: 'text' as const, placeholder: DEFAULT_SOUND_EFFECT_MODEL },
     { key: 'voiceDesignModel', label: 'Voice Design Model', type: 'text' as const, placeholder: 'eleven_multilingual_ttv_v2' },
     { key: 'defaultVoiceId', label: 'Default Voice ID', type: 'text' as const, placeholder: DEFAULT_VOICE_ID },

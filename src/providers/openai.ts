@@ -17,6 +17,17 @@ const DEFAULT_TTS_MODEL = 'gpt-4o-mini-tts'
 const DEFAULT_ASR_MODEL = 'gpt-4o-transcribe'
 const DEFAULT_VOICE = 'alloy'
 const DEFAULT_RESPONSE_FORMAT = 'mp3'
+const OPENAI_TTS_MODELS = [
+  'gpt-4o-mini-tts',
+  'tts-1',
+  'tts-1-hd',
+]
+const OPENAI_ASR_MODELS = [
+  'gpt-4o-transcribe',
+  'gpt-4o-mini-transcribe',
+  'gpt-4o-transcribe-diarize',
+  'whisper-1',
+]
 
 interface OpenAiVoicePayload {
   id?: string
@@ -41,8 +52,8 @@ export class OpenAiProvider implements TtsProvider, AsrProvider, VoiceCloneProvi
   readonly fields = [
     { key: 'apiKey', label: 'API Key', type: 'password' as const, secret: true },
     { key: 'baseUrl', label: 'Base URL', type: 'url' as const, placeholder: DEFAULT_BASE_URL },
-    { key: 'ttsModel', label: 'TTS Model', type: 'text' as const, placeholder: DEFAULT_TTS_MODEL },
-    { key: 'asrModel', label: 'ASR Model', type: 'text' as const, placeholder: DEFAULT_ASR_MODEL },
+    { key: 'ttsModel', label: 'TTS Model', type: 'text' as const, placeholder: DEFAULT_TTS_MODEL, options: OPENAI_TTS_MODELS },
+    { key: 'asrModel', label: 'ASR Model', type: 'text' as const, placeholder: DEFAULT_ASR_MODEL, options: OPENAI_ASR_MODELS },
     { key: 'defaultVoice', label: 'Default Voice', type: 'text' as const, placeholder: DEFAULT_VOICE },
     { key: 'responseFormat', label: 'Response Format', type: 'text' as const, placeholder: DEFAULT_RESPONSE_FORMAT },
   ]

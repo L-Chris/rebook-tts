@@ -486,18 +486,27 @@ function App() {
 
 function FieldInput({ field, value, onChange }) {
   const inputId = `field-${field.key}`
+  const listId = field.options?.length ? `${inputId}-options` : undefined
   return (
     <label className="grid gap-1.5 text-sm font-semibold" htmlFor={inputId}>
       {field.label}
       <input
         className="input"
         id={inputId}
+        list={listId}
         placeholder={field.placeholder || ''}
         type={field.type === 'password' ? 'password' : field.type === 'boolean' ? 'checkbox' : field.type}
         checked={field.type === 'boolean' ? Boolean(value) : undefined}
         value={field.type === 'boolean' ? undefined : value}
         onChange={event => onChange(field.type === 'boolean' ? event.target.checked : event.target.value)}
       />
+      {listId ? (
+        <datalist id={listId}>
+          {field.options.map(option => (
+            <option key={option} value={option} />
+          ))}
+        </datalist>
+      ) : null}
       {field.description ? <small className="font-normal text-slate-500">{field.description}</small> : null}
     </label>
   )

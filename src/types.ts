@@ -37,6 +37,7 @@ export interface ProviderFieldDefinition {
   secret?: boolean
   placeholder?: string
   description?: string
+  options?: string[]
 }
 
 export interface ProviderDefinition {
