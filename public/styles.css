@@ -135,6 +135,13 @@ p {
   color: #0f4fb3;
 }
 
+.tab:disabled {
+  border-color: #d9dee7;
+  background: #f6f7f9;
+  color: #9aa3b2;
+  cursor: not-allowed;
+}
+
 .detail {
   display: grid;
   gap: 20px;

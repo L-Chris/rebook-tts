@@ -14,10 +14,11 @@ const saveStatusEl = document.querySelector('#save-status')
 const invokeInputEl = document.querySelector('#invoke-input')
 const invokeOutputEl = document.querySelector('#invoke-output')
 const invokeStatusEl = document.querySelector('#invoke-status')
+const invokeTabs = [...document.querySelectorAll('.tab')]
 
 document.querySelector('#refresh').addEventListener('click', loadProviders)
 document.querySelector('#invoke').addEventListener('click', invokeSelectedProvider)
-for (const tab of document.querySelectorAll('.tab')) {
+for (const tab of invokeTabs) {
   tab.addEventListener('click', () => selectInvokeTemplate(tab.dataset.template))
 }
 formEl.addEventListener('submit', saveSelectedProvider)
@@ -108,35 +109,53 @@ function renderSelectedProvider() {
     fieldsEl.append(wrapper)
   }
 
-  const operation = selectedProvider.capabilities?.asr ? 'transcribe' : 'synthesize'
-  setInvokeTemplate(operation === 'transcribe' ? 'asr' : 'tts')
+  syncInvokeTabs()
+  setInvokeTemplate(getDefaultInvokeTemplate())
   invokeOutputEl.textContent = ''
 }
 
 function selectInvokeTemplate(template) {
-  for (const tab of document.querySelectorAll('.tab')) {
-    tab.classList.toggle('active', tab.dataset.template === template)
-  }
+  if (!supportsInvokeTemplate(template)) return
   setInvokeTemplate(template)
 }
 
 function setInvokeTemplate(template) {
   if (!selectedProvider) return
-  const operation = template === 'asr'
-    ? 'transcribe'
-    : template === 'tts'
-      ? 'synthesize'
-      : selectedProvider.capabilities?.asr ? 'transcribe' : 'synthesize'
+  const selectedTemplate = supportsInvokeTemplate(template) ? template : getDefaultInvokeTemplate()
+  const operation = selectedTemplate === 'asr' ? 'transcribe' : 'synthesize'
+
+  for (const tab of invokeTabs) {
+    tab.classList.toggle('active', tab.dataset.template === selectedTemplate)
+  }
 
   invokeInputEl.value = JSON.stringify({
-    provider: operation === 'transcribe'
-      ? selectedProvider.capabilities?.asr ? selectedProvider.id : 'bilibili-asr'
-      : selectedProvider.capabilities?.tts ? selectedProvider.id : 'edge',
+    provider: selectedProvider.id,
     operation,
     input: operation === 'transcribe'
       ? { url: 'https://example.com/audio.m4a', format: 'txt' }
       : { text: '你好，voxout。', voice: selectedProvider.id === 'edge' ? 'zh-CN-XiaoyiNeural' : undefined },
   }, null, 2)
+}
+
+function syncInvokeTabs() {
+  for (const tab of invokeTabs) {
+    const supported = supportsInvokeTemplate(tab.dataset.template)
+    tab.disabled = !supported
+    tab.title = supported ? '' : 'Selected provider does not support this operation'
+  }
+}
+
+function supportsInvokeTemplate(template) {
+  if (!selectedProvider) return false
+  if (template === 'asr') return Boolean(selectedProvider.capabilities?.asr)
+  if (template === 'tts') return Boolean(selectedProvider.capabilities?.tts)
+  return Boolean(selectedProvider.capabilities?.tts || selectedProvider.capabilities?.asr)
+}
+
+function getDefaultInvokeTemplate() {
+  if (selectedProvider?.capabilities?.tts) return 'tts'
+  if (selectedProvider?.capabilities?.asr) return 'asr'
+  return 'provider'
 }
 
 async function saveSelectedProvider(event) {
