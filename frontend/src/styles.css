@@ -58,6 +58,18 @@
     @apply flex items-center justify-between gap-3 text-left;
   }
 
+  .voice-cascader-selected {
+    @apply flex min-w-0 items-center gap-1;
+  }
+
+  .voice-cascader-name {
+    @apply min-w-0 truncate;
+  }
+
+  .voice-cascader-meta {
+    @apply shrink-0;
+  }
+
   .voice-cascader-panel {
     @apply absolute z-20 mt-1 grid w-[min(32rem,calc(100vw-2rem))] grid-cols-[8rem_8rem_minmax(0,1fr)] overflow-hidden rounded-md border border-slate-200 bg-white shadow-lg;
   }
@@ -71,7 +83,7 @@
   }
 
   .voice-cascader-option {
-    @apply block w-full rounded px-2 py-1.5 text-left text-sm font-normal text-slate-700 hover:bg-blue-50 hover:text-blue-700;
+    @apply flex w-full min-w-0 rounded px-2 py-1.5 text-left text-sm font-normal text-slate-700 hover:bg-blue-50 hover:text-blue-700;
   }
 
   .voice-cascader-option-active {

@@ -693,7 +693,11 @@ function VoiceCascader({ onChange, value, voiceOptions, voiceTree }) {
         type="button"
         onClick={() => setOpen(current => !current)}
       >
-        <span className="truncate">{selectedVoice?.label ?? 'Select voice'}</span>
+        <span className="voice-cascader-selected">
+          <span className="voice-cascader-name">{selectedVoice?.name ?? 'Select voice'}</span>
+          {selectedVoice?.locale ? <span className="voice-cascader-meta">· {selectedVoice.locale}</span> : null}
+          {selectedVoice?.gender ? <span className="voice-cascader-meta">· {selectedVoice.gender}</span> : null}
+        </span>
         <span className="text-slate-400">▾</span>
       </button>
 
@@ -737,7 +741,7 @@ function VoiceCascader({ onChange, value, voiceOptions, voiceTree }) {
                   setOpen(false)
                 }}
               >
-                {option.name}
+                <span className="truncate">{option.name}</span>
               </button>
             ))}
           </div>
