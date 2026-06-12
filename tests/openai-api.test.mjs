@@ -56,6 +56,9 @@ test('GET /v1/models returns OpenAI-style model objects', async () => {
   assert.equal(mimo.owned_by, 'voxout')
   assert.equal(mimo.capabilities.tts, true)
   assert.equal(mimo.capabilities.asr, true)
+  const openai = payload.data.find(model => model.id === 'openai')
+  assert.equal(openai.capabilities.tts, true)
+  assert.equal(openai.capabilities.voiceClone, true)
   const modelIds = payload.data.map(model => model.id)
   assert.ok(!modelIds.includes('mock'))
   assert.ok(!modelIds.includes('mock-asr'))
@@ -151,11 +154,39 @@ test('POST /v1/audio/design persists generated voices', async () => {
   assert.equal(payload.voices.length, 1)
   assert.equal(payload.voices[0].name, 'Calm Mock')
   assert.match(payload.voices[0].preview_audio, /^data:audio\/wav;base64,/)
+  assert.equal(payload.voices[0].provider_links[0].provider, 'mock')
+  assert.equal(payload.voices[0].provider_links[0].provider_voice_key, payload.voices[0].voice_id)
 
   const voicesResponse = await fetch(`${baseUrl}/api/voices?provider=mock`)
   const voicesPayload = await voicesResponse.json()
   assert.equal(voicesResponse.status, 200)
   assert.ok(voicesPayload.voices.some(voice => voice.voice_id === payload.voices[0].voice_id))
+})
+
+test('POST /v1/audio/voices clones and persists provider-linked voices', async () => {
+  const form = new FormData()
+  form.set('model', 'mock')
+  form.set('name', 'Uploaded Mock')
+  form.set('description', 'Uploaded voice sample')
+  form.set('audio_sample', new Blob([createTinyWav()], { type: 'audio/wav' }), 'voice.wav')
+
+  const response = await fetch(`${baseUrl}/v1/audio/voices`, {
+    method: 'POST',
+    body: form,
+  })
+  const payload = await response.json()
+
+  assert.equal(response.status, 200)
+  assert.equal(payload.object, 'audio.voice')
+  assert.equal(payload.name, 'Uploaded Mock')
+  assert.match(payload.id, /^mock-clone-/)
+  assert.equal(payload.voice.provider_links[0].provider, 'mock')
+  assert.equal(payload.voice.provider_links[0].provider_voice_id, payload.id)
+
+  const voicesResponse = await fetch(`${baseUrl}/api/voices?provider=mock`)
+  const voicesPayload = await voicesResponse.json()
+  assert.equal(voicesResponse.status, 200)
+  assert.ok(voicesPayload.voices.some(voice => voice.voice_id === payload.id))
 })
 
 test('POST /v1/audio/speech rejects unsupported voice_id providers', async () => {

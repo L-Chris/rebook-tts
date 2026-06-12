@@ -18,6 +18,8 @@ function App() {
   const [isolationForm, setIsolationForm] = useState(defaultIsolationForm())
   const [isolationFile, setIsolationFile] = useState(null)
   const [designForm, setDesignForm] = useState(defaultDesignForm())
+  const [cloneForm, setCloneForm] = useState(defaultCloneForm())
+  const [cloneFile, setCloneFile] = useState(null)
   const [transcriptionForm, setTranscriptionForm] = useState(defaultTranscriptionForm())
   const [transcriptionFile, setTranscriptionFile] = useState(null)
 
@@ -43,6 +45,8 @@ function App() {
     setIsolationForm(defaultIsolationForm())
     setIsolationFile(null)
     setDesignForm(defaultDesignForm())
+    setCloneForm(defaultCloneForm())
+    setCloneFile(null)
     setTranscriptionForm(defaultTranscriptionForm())
     setTranscriptionFile(null)
     setIsConfigOpen(false)
@@ -157,6 +161,8 @@ function App() {
     try {
       if (testMode === 'design') {
         await runDesignTest()
+      } else if (testMode === 'clone') {
+        await runCloneTest()
       } else if (testMode === 'isolation') {
         await runIsolationTest()
       } else if (testMode === 'effect') {
@@ -312,6 +318,40 @@ function App() {
     }
   }
 
+  async function runCloneTest() {
+    const form = new FormData()
+    form.set('model', selectedProvider.id)
+    form.set('name', cloneForm.name)
+    if (cloneForm.consent.trim()) form.set('consent', cloneForm.consent.trim())
+    if (cloneForm.description.trim()) form.set('description', cloneForm.description.trim())
+    if (cloneForm.language.trim()) form.set('language', cloneForm.language.trim())
+    if (cloneFile) {
+      form.set('audio_sample', cloneFile)
+    } else if (cloneForm.audioSource.trim()) {
+      appendAudioSource(form, cloneForm.audioSource.trim())
+    } else {
+      throw new Error('Choose an audio file or enter an audio source.')
+    }
+
+    const response = await fetch(apiUrl('/v1/audio/voices', apiBaseUrl), {
+      method: 'POST',
+      body: form,
+    })
+    if (!response.ok) throw new Error(await readError(response))
+    const payload = await response.json()
+    setTestResult({
+      kind: 'json',
+      content: JSON.stringify(payload, null, 2),
+      mimeType: 'application/json',
+      endpoint: 'POST /v1/audio/voices',
+    })
+    if (selectedProvider?.capabilities?.tts) {
+      loadProviderVoices(selectedProvider.id)
+        .then(options => setVoiceOptions(options))
+        .catch(() => {})
+    }
+  }
+
   const capabilityText = useMemo(() => {
     if (!selectedProvider) return ''
     return Object.entries(selectedProvider.capabilities || {})
@@ -367,7 +407,7 @@ function App() {
                     <h2 className="text-lg font-bold">Test API</h2>
                   </div>
                   <div className="mb-4 flex gap-2">
-                    {['tts', 'asr', 'effect', 'isolation', 'design'].map(mode => (
+                    {['tts', 'asr', 'effect', 'isolation', 'design', 'clone'].map(mode => (
                       <button
                         className={`tab ${testMode === mode ? 'tab-active' : ''}`}
                         disabled={!supportsTestMode(selectedProvider, mode)}
@@ -383,6 +423,13 @@ function App() {
                   <form className="grid gap-4" onSubmit={runTest}>
                     {testMode === 'design' ? (
                       <DesignTestForm form={designForm} onFormChange={setDesignForm} />
+                    ) : testMode === 'clone' ? (
+                      <CloneTestForm
+                        file={cloneFile}
+                        form={cloneForm}
+                        onFileChange={setCloneFile}
+                        onFormChange={setCloneForm}
+                      />
                     ) : testMode === 'isolation' ? (
                       <IsolationTestForm
                         file={isolationFile}
@@ -633,7 +680,14 @@ function TranscriptionTestForm({ file, form, onFileChange, onFormChange }) {
   )
 }
 
-function AudioSourceControl({ file, form, inputId, onFileChange, onFormChange }) {
+function AudioSourceControl({
+  file,
+  form,
+  inputId,
+  onFileChange,
+  onFormChange,
+  placeholder = 'https://example.com/audio.m4a, BV1..., data:audio/wav;base64,...',
+}) {
   const fileId = `${inputId}-file`
   return (
     <div className="grid gap-1.5 text-sm font-semibold md:col-span-2">
@@ -642,7 +696,7 @@ function AudioSourceControl({ file, form, inputId, onFileChange, onFormChange })
         <textarea
           id={inputId}
           className="textarea min-h-24 font-mono text-xs"
-          placeholder="https://example.com/audio.m4a, BV1..., data:audio/wav;base64,..."
+          placeholder={placeholder}
           value={form.audioSource}
           onChange={event => {
             onFileChange(null)
@@ -816,6 +870,54 @@ function DesignTestForm({ form, onFormChange }) {
   )
 }
 
+function CloneTestForm({ file, form, onFileChange, onFormChange }) {
+  return (
+    <div className="grid gap-3 md:grid-cols-2">
+      <AudioSourceControl
+        file={file}
+        form={form}
+        inputId="clone-audio-source"
+        placeholder="https://example.com/sample.wav, data:audio/wav;base64,..."
+        onFileChange={onFileChange}
+        onFormChange={onFormChange}
+      />
+      <label className="grid gap-1.5 text-sm font-semibold">
+        Name
+        <input
+          className="input"
+          value={form.name}
+          onChange={event => onFormChange({ ...form, name: event.target.value })}
+        />
+      </label>
+      <label className="grid gap-1.5 text-sm font-semibold">
+        Consent
+        <input
+          className="input"
+          value={form.consent}
+          onChange={event => onFormChange({ ...form, consent: event.target.value })}
+        />
+      </label>
+      <label className="grid gap-1.5 text-sm font-semibold">
+        Language
+        <input
+          className="input"
+          placeholder="optional"
+          value={form.language}
+          onChange={event => onFormChange({ ...form, language: event.target.value })}
+        />
+      </label>
+      <label className="grid gap-1.5 text-sm font-semibold md:col-span-2">
+        Description
+        <textarea
+          className="textarea min-h-20"
+          value={form.description}
+          onChange={event => onFormChange({ ...form, description: event.target.value })}
+        />
+      </label>
+    </div>
+  )
+}
+
 function ResultPreview({ result }) {
   if (!result) return null
   if (result.kind === 'error') {
@@ -869,6 +971,7 @@ function supportsTestMode(provider, mode) {
   if (mode === 'effect') return Boolean(provider.capabilities?.soundEffects)
   if (mode === 'isolation') return Boolean(provider.capabilities?.isolation)
   if (mode === 'design') return Boolean(provider.capabilities?.voiceDesign)
+  if (mode === 'clone') return Boolean(provider.capabilities?.voiceClone)
   return Boolean(provider.capabilities?.tts)
 }
 
@@ -878,6 +981,7 @@ function getDefaultTestMode(provider) {
   if (provider?.capabilities?.soundEffects) return 'effect'
   if (provider?.capabilities?.isolation) return 'isolation'
   if (provider?.capabilities?.voiceDesign) return 'design'
+  if (provider?.capabilities?.voiceClone) return 'clone'
   return 'tts'
 }
 
@@ -886,11 +990,12 @@ function getTestModeLabel(mode) {
   if (mode === 'asr') return 'Transcription'
   if (mode === 'effect') return 'Effect'
   if (mode === 'isolation') return 'Isolation'
+  if (mode === 'clone') return 'Clone'
   return 'Design'
 }
 
 function supportsVoiceId(provider) {
-  return provider?.id === 'elevenlabs' || provider?.id === 'mimo'
+  return provider?.id === 'openai' || provider?.id === 'elevenlabs' || provider?.id === 'mimo'
 }
 
 function defaultSpeechForm(provider) {
@@ -930,6 +1035,16 @@ function defaultDesignForm() {
     autoGenerateText: true,
     guidanceScale: '',
     seed: '',
+  }
+}
+
+function defaultCloneForm() {
+  return {
+    audioSource: '',
+    name: 'Cloned voice',
+    consent: '',
+    description: '',
+    language: '',
   }
 }
 

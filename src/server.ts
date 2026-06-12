@@ -11,6 +11,7 @@ import {
   getAudioIsolationProvider,
   getSoundEffectProvider,
   getTtsProvider,
+  getVoiceCloneProvider,
   getVoiceDesignProvider,
   isInternalProviderId,
   listAsrProviders,
@@ -18,6 +19,7 @@ import {
   listProviderDefinitions,
   listSoundEffectProviders,
   listTtsProviders,
+  listVoiceCloneProviders,
   listVoiceDesignProviders,
 } from './providers/registry.js'
 import { sendPublicFile } from './public.js'
@@ -29,6 +31,7 @@ import type {
   SoundEffectRequest,
   SynthesizeRequest,
   TranscribeRequest,
+  VoiceCloneRequest,
   VoiceDesignRequest,
   VoicePreview,
   VoiceRecord,
@@ -81,7 +84,7 @@ const server = createServer(async (req, res) => {
       const providerId = url.searchParams.get('provider') ?? undefined
       if (providerId) assertPublicProviderAccess(providerId)
       const voices = (await configStore.listVoices(providerId))
-        .filter(voice => canExposeProvider(voice.providerId))
+        .filter(voice => voice.links.some(link => canExposeProvider(link.providerId)))
       return sendJson(res, { voices: voices.map(formatVoiceRecord) }, 200, isHead)
     }
 
@@ -123,6 +126,10 @@ const server = createServer(async (req, res) => {
 
     if (req.method === 'POST' && url.pathname === '/v1/audio/design') {
       return await createVoiceDesign(req, res)
+    }
+
+    if (req.method === 'POST' && url.pathname === '/v1/audio/voices') {
+      return await createVoice(req, res)
     }
 
     if (req.method === 'POST' && url.pathname === '/v1/audio/transcriptions') {
@@ -230,22 +237,41 @@ async function createVoiceDesign(req: IncomingMessage, res: ServerResponse): Pro
   )
   const voices = []
   for (const voice of result.voices) {
-    voices.push(await configStore.upsertVoice({
-      providerId: provider.id,
-      voiceId: voice.voiceId,
-      providerVoiceId: voice.providerVoiceId,
-      name: voice.name,
-      description: voice.description,
-      language: voice.language,
-      previewMimeType: voice.previewMimeType,
-      previewAudio: voice.previewAudioData,
-      metadata: voice.metadata,
-    }))
+    voices.push(await persistProviderVoice(provider.id, context, voice))
   }
   sendJson(res, {
     provider: provider.id,
     text: result.text,
     voices: voices.map(formatVoiceRecord),
+  })
+}
+
+async function createVoice(req: IncomingMessage, res: ServerResponse): Promise<void> {
+  const form = await readMultipartForm(req)
+  const providerId = getOpenAiModelProvider(form.fields.model, form.fields.provider)
+  assertPublicProviderAccess(providerId)
+  const provider = getVoiceCloneProvider(providerId)
+  const context = await getRuntimeConfig(provider.id)
+  ensureEnabled(provider.id, context)
+
+  const request = await normalizeVoiceCloneInput(provider.id, form)
+  const timeoutMs = getProviderTimeoutMs(context)
+  const result = await withTimeout(
+    provider.cloneVoice(request, context),
+    timeoutMs,
+    `Voice cloning timed out after ${timeoutMs}ms for provider ${provider.id}`,
+  )
+  const voice = await persistProviderVoice(provider.id, context, result.voice, {
+    requestedConsent: request.consent ?? null,
+    source: 'audio_sample',
+  })
+  sendJson(res, {
+    id: voice.voiceId,
+    object: 'audio.voice',
+    created_at: toUnixSeconds(voice.createdAt),
+    name: voice.name,
+    provider: provider.id,
+    voice: formatVoiceRecord(voice),
   })
 }
 
@@ -315,6 +341,7 @@ function listOpenAiModels(): Array<{
     ...listSoundEffectProviders(),
     ...listAudioIsolationProviders(),
     ...listVoiceDesignProviders(),
+    ...listVoiceCloneProviders(),
   ].filter(provider => !isInternalProviderId(provider.id))) {
     const existing = models.get(provider.id)
     models.set(provider.id, {
@@ -375,7 +402,12 @@ function assertKnownProvider(providerId: string): void {
           getAudioIsolationProvider(providerId)
           return
         } catch {
-          getVoiceDesignProvider(providerId)
+          try {
+            getVoiceDesignProvider(providerId)
+            return
+          } catch {
+            getVoiceCloneProvider(providerId)
+          }
         }
       }
     }
@@ -512,17 +544,66 @@ function normalizeVoiceDesignInput(providerId: string, input: unknown): VoiceDes
   }
 }
 
+async function normalizeVoiceCloneInput(providerId: string, form: Awaited<ReturnType<typeof readMultipartForm>>): Promise<VoiceCloneRequest> {
+  const file = form.files.audio_sample ?? form.files.audio ?? form.files.file
+  const name = form.fields.name?.trim()
+  const url = form.fields.url?.trim()
+  if (!name) throw new Error('name is required')
+  if (!file && !form.fields.audioData && !url) throw new Error('audio_sample file, url, or audioData is required')
+  if (!file && !form.fields.audioData && url) {
+    return resolveVoiceCloneUrl(providerId, form, url, name)
+  }
+  return {
+    provider: providerId,
+    name,
+    audioData: file
+      ? `data:${normalizeMimeType(file.contentType)};base64,${file.data.toString('base64')}`
+      : form.fields.audioData,
+    mimeType: file ? normalizeMimeType(file.contentType) : form.fields.mimeType,
+    fileName: file?.fileName,
+    consent: form.fields.consent,
+    description: form.fields.description,
+    language: form.fields.language,
+    previewText: form.fields.preview_text,
+  }
+}
+
+async function resolveVoiceCloneUrl(
+  providerId: string,
+  form: Awaited<ReturnType<typeof readMultipartForm>>,
+  url: string,
+  name: string,
+): Promise<VoiceCloneRequest> {
+  const response = await fetch(url)
+  if (!response.ok) throw new Error(`Failed to download audio for voice clone: ${response.status}`)
+  const audio = Buffer.from(await response.arrayBuffer())
+  const mimeType = normalizeMimeType(response.headers.get('content-type') ?? undefined)
+  return {
+    provider: providerId,
+    name,
+    audioData: `data:${mimeType};base64,${audio.toString('base64')}`,
+    mimeType,
+    fileName: getFileNameFromUrl(url),
+    consent: form.fields.consent,
+    description: form.fields.description,
+    language: form.fields.language,
+    previewText: form.fields.preview_text,
+  }
+}
+
 async function resolveVoiceIdForSynthesis(providerId: string, request: SynthesizeRequest): Promise<void> {
   const voiceId = request.voiceId ?? request.segment.voiceId
   if (!voiceId) return
-  if (providerId !== 'elevenlabs' && providerId !== 'mimo') {
+  if (providerId !== 'openai' && providerId !== 'elevenlabs' && providerId !== 'mimo') {
     throw new Error(`voice_id is not supported for provider ${providerId}`)
   }
   const voice = await configStore.getVoice(providerId, voiceId)
   if (!voice) return
+  const link = voice.links.find(item => item.providerId === providerId)
+  if (!link) return
   const resolvedVoice = providerId === 'mimo'
-    ? voice.previewAudio ?? voice.providerVoiceId ?? voice.voiceId
-    : voice.providerVoiceId ?? voice.voiceId
+    ? link.previewAudio ?? voice.previewAudio ?? link.providerVoiceId ?? link.providerVoiceKey
+    : link.providerVoiceId ?? link.providerVoiceKey
   request.voiceId = resolvedVoice
   request.segment.voiceId = resolvedVoice
 }
@@ -530,11 +611,13 @@ async function resolveVoiceIdForSynthesis(providerId: string, request: Synthesiz
 function mergeVoices(providerVoices: Array<{ id: string, name: string, locale?: string, gender?: string, provider: string }>, storedVoices: VoiceRecord[]) {
   const byId = new Map(providerVoices.map(voice => [voice.id, voice]))
   for (const voice of storedVoices) {
-    byId.set(voice.voiceId, {
-      id: voice.voiceId,
+    const link = voice.links.find(item => item.providerId === providerVoices[0]?.provider) ?? voice.links[0]
+    const id = link?.providerVoiceId ?? link?.providerVoiceKey ?? voice.voiceId
+    byId.set(id, {
+      id,
       name: voice.name,
       locale: voice.language,
-      provider: voice.providerId,
+      provider: link?.providerId ?? 'voxout',
     })
   }
   return [...byId.values()]
@@ -543,18 +626,68 @@ function mergeVoices(providerVoices: Array<{ id: string, name: string, locale?: 
 function formatVoiceRecord(voice: VoiceRecord) {
   return {
     id: voice.id,
-    provider: voice.providerId,
     voice_id: voice.voiceId,
-    provider_voice_id: voice.providerVoiceId,
     name: voice.name,
     description: voice.description,
     language: voice.language,
     preview_mime_type: voice.previewMimeType,
     preview_audio: voice.previewAudio,
     metadata: voice.metadata,
+    provider_links: voice.links.map(link => ({
+      id: link.id,
+      provider: link.providerId,
+      provider_account_id: link.providerAccountId,
+      provider_voice_id: link.providerVoiceId,
+      provider_voice_key: link.providerVoiceKey,
+      preview_mime_type: link.previewMimeType,
+      preview_audio: link.previewAudio,
+      metadata: link.metadata,
+      created_at: link.createdAt,
+      updated_at: link.updatedAt,
+    })),
     created_at: voice.createdAt,
     updated_at: voice.updatedAt,
   }
+}
+
+async function persistProviderVoice(
+  providerId: string,
+  context: ProviderRuntimeConfig,
+  voice: VoicePreview,
+  extraMetadata: Record<string, string | number | boolean | null> = {},
+): Promise<VoiceRecord> {
+  return configStore.upsertVoice({
+    voiceId: voice.voiceId,
+    name: voice.name,
+    description: voice.description,
+    language: voice.language,
+    previewMimeType: voice.previewMimeType,
+    previewAudio: voice.previewAudioData,
+    metadata: voice.metadata,
+    providerLink: {
+      providerId,
+      providerAccountId: getProviderAccountId(context),
+      providerVoiceId: voice.providerVoiceId,
+      providerVoiceKey: voice.providerVoiceId ?? voice.voiceId,
+      previewMimeType: voice.previewMimeType,
+      previewAudio: voice.previewAudioData,
+      metadata: {
+        ...(voice.metadata ?? {}),
+        ...extraMetadata,
+      },
+    },
+  })
+}
+
+function getProviderAccountId(context: ProviderRuntimeConfig): string {
+  const value = context.config.accountId ?? context.config.accountName
+  return typeof value === 'string' && value.trim() ? value.trim() : 'default'
+}
+
+function toUnixSeconds(value: string | undefined): number {
+  if (!value) return Math.floor(Date.now() / 1000)
+  const timestamp = Date.parse(value)
+  return Number.isFinite(timestamp) ? Math.floor(timestamp / 1000) : Math.floor(Date.now() / 1000)
 }
 
 function setCorsHeaders(res: ServerResponse): void {
@@ -690,4 +823,14 @@ function normalizeTranscriptionResponseFormat(value: string | undefined): 'json'
 
 function normalizeMimeType(value: string | undefined): string {
   return value?.split(';')[0]?.trim() || 'application/octet-stream'
+}
+
+function getFileNameFromUrl(value: string): string {
+  try {
+    const pathname = new URL(value).pathname
+    const name = pathname.split('/').filter(Boolean).pop()
+    return name || 'audio-sample'
+  } catch {
+    return 'audio-sample'
+  }
 }

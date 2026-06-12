@@ -11,6 +11,7 @@ export interface TtsProviderCapabilities {
   tts?: boolean
   asr?: boolean
   voiceDesign?: boolean
+  voiceClone?: boolean
   soundEffects?: boolean
   isolation?: boolean
 }
@@ -154,6 +155,19 @@ export interface VoiceDesignRequest {
   promptStrength?: number
 }
 
+export interface VoiceCloneRequest {
+  provider?: string
+  name: string
+  audioData: string
+  mimeType?: string
+  fileName?: string
+  consent?: string
+  description?: string
+  language?: string
+  previewText?: string
+  metadata?: JsonObject
+}
+
 export interface VoicePreview {
   voiceId: string
   providerVoiceId?: string
@@ -170,6 +184,12 @@ export interface VoiceDesignResult {
   provider: string
   text?: string
   voices: VoicePreview[]
+  raw?: unknown
+}
+
+export interface VoiceCloneResult {
+  provider: string
+  voice: VoicePreview
   raw?: unknown
 }
 
@@ -211,6 +231,14 @@ export interface VoiceDesignProvider {
   designVoice(request: VoiceDesignRequest, context?: ProviderContext): Promise<VoiceDesignResult>
 }
 
+export interface VoiceCloneProvider {
+  readonly id: string
+  readonly name: string
+  readonly capabilities?: ProviderCapabilities
+  readonly fields?: ProviderFieldDefinition[]
+  cloneVoice(request: VoiceCloneRequest, context?: ProviderContext): Promise<VoiceCloneResult>
+}
+
 export interface ProviderRuntimeConfig {
   enabled: boolean
   config: JsonObject
@@ -231,12 +259,25 @@ export interface ProviderConfigRecord extends ProviderRuntimeConfig {
 
 export interface VoiceRecord {
   id: string
-  providerId: string
   voiceId: string
-  providerVoiceId?: string
   name: string
   description?: string
   language?: string
+  previewMimeType?: string
+  previewAudio?: string
+  metadata: JsonObject
+  links: VoiceProviderLinkRecord[]
+  createdAt?: string
+  updatedAt?: string
+}
+
+export interface VoiceProviderLinkRecord {
+  id: string
+  voiceRecordId: string
+  providerId: string
+  providerAccountId: string
+  providerVoiceId?: string
+  providerVoiceKey: string
   previewMimeType?: string
   previewAudio?: string
   metadata: JsonObject
@@ -245,12 +286,21 @@ export interface VoiceRecord {
 }
 
 export interface VoiceInput {
-  providerId: string
-  voiceId: string
-  providerVoiceId?: string
+  voiceId?: string
   name: string
   description?: string
   language?: string
+  previewMimeType?: string
+  previewAudio?: string
+  metadata?: JsonObject
+  providerLink?: VoiceProviderLinkInput
+}
+
+export interface VoiceProviderLinkInput {
+  providerId: string
+  providerAccountId?: string
+  providerVoiceId?: string
+  providerVoiceKey?: string
   previewMimeType?: string
   previewAudio?: string
   metadata?: JsonObject

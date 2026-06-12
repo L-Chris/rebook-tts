@@ -10,8 +10,9 @@ into the `ProviderConfig` table.
 ## Providers
 
 - `edge`: Microsoft Edge online TTS.
+- `openai`: OpenAI TTS and custom voice cloning.
 - `mimo`: Xiaomi MiMo TTS with preset voices, voice design, and ASR.
-- `elevenlabs`: ElevenLabs TTS, ASR, and sound-effects generation.
+- `elevenlabs`: ElevenLabs TTS, ASR, sound effects, isolation, voice design, and voice cloning.
 - `bilibili-asr`: ASR through the `bilibili-mcp` Flask API.
 
 ## API
@@ -23,12 +24,19 @@ OpenAI-compatible audio API:
 - `POST /v1/audio/effect`
 - `POST /v1/audio/isolation`
 - `POST /v1/audio/design`
+- `POST /v1/audio/voices`
 - `POST /v1/audio/transcriptions`
 
 The OpenAI-style `model` field maps to a voxout provider id such as `edge`,
-`mimo`, `elevenlabs`, or `bilibili-asr`.
+`openai`, `mimo`, `elevenlabs`, or `bilibili-asr`.
 `/v1/audio/speech` also accepts `voice_id` for providers that support stored
-voice records, currently `elevenlabs` and `mimo`.
+voice records, currently `openai`, `elevenlabs`, and `mimo`.
+
+Stored voices are provider-neutral records. Platform-specific voice ids and
+account bindings are kept in `VoiceProviderLink`, so one voxout `voice_id` can
+be linked to multiple provider accounts. MiMo uploads do not return a platform
+voice id; voxout stores the uploaded audio sample in the provider link and uses
+that sample with MiMo's voice clone model during TTS.
 
 Provider management API:
 
@@ -76,6 +84,16 @@ Voice design:
 curl -X POST http://127.0.0.1:4177/v1/audio/design \
   -H 'content-type: application/json' \
   --data '{"model":"elevenlabs","input":"A calm narrator voice with a clean tone.","name":"Calm Narrator","auto_generate_text":true}'
+```
+
+Voice cloning from an audio sample:
+
+```bash
+curl -X POST http://127.0.0.1:4177/v1/audio/voices \
+  -F model=openai \
+  -F name='Narrator Clone' \
+  -F consent=cons_1234 \
+  -F audio_sample=@sample.wav
 ```
 
 Transcription from a local file:

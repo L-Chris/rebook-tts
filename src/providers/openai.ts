@@ -1,0 +1,214 @@
+import { Blob } from 'node:buffer'
+import type {
+  ProviderContext,
+  SynthesizeRequest,
+  TtsProvider,
+  TtsVoice,
+  VoiceCloneProvider,
+  VoiceCloneRequest,
+  VoiceCloneResult,
+} from '../types.js'
+
+const DEFAULT_BASE_URL = 'https://api.openai.com/v1'
+const DEFAULT_TTS_MODEL = 'gpt-4o-mini-tts'
+const DEFAULT_VOICE = 'alloy'
+const DEFAULT_RESPONSE_FORMAT = 'mp3'
+
+interface OpenAiVoicePayload {
+  id?: string
+  name?: string
+  object?: string
+  created_at?: number
+}
+
+export class OpenAiProvider implements TtsProvider, VoiceCloneProvider {
+  readonly id = 'openai'
+  readonly name = 'OpenAI'
+  readonly capabilities = { tts: true, voiceClone: true }
+  readonly fields = [
+    { key: 'apiKey', label: 'API Key', type: 'password' as const, secret: true },
+    { key: 'baseUrl', label: 'Base URL', type: 'url' as const, placeholder: DEFAULT_BASE_URL },
+    { key: 'ttsModel', label: 'TTS Model', type: 'text' as const, placeholder: DEFAULT_TTS_MODEL },
+    { key: 'defaultVoice', label: 'Default Voice', type: 'text' as const, placeholder: DEFAULT_VOICE },
+    { key: 'responseFormat', label: 'Response Format', type: 'text' as const, placeholder: DEFAULT_RESPONSE_FORMAT },
+  ]
+
+  async listVoices(): Promise<TtsVoice[]> {
+    return OPENAI_PRESET_VOICES.map(voice => ({
+      ...voice,
+      capabilities: this.capabilities,
+    }))
+  }
+
+  async synthesize(request: SynthesizeRequest, context: ProviderContext = {}) {
+    const apiKey = getApiKey(context)
+    const text = request.segment.text.trim()
+    const responseFormat = normalizeResponseFormat(request.outputFormat ?? getConfigString(context, 'responseFormat') ?? DEFAULT_RESPONSE_FORMAT)
+    const response = await fetch(`${getBaseUrl(context)}/audio/speech`, {
+      method: 'POST',
+      headers: {
+        authorization: `Bearer ${apiKey}`,
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify(compactObject({
+        model: getConfigString(context, 'ttsModel') ?? DEFAULT_TTS_MODEL,
+        input: text,
+        voice: request.segment.voiceId ?? request.voiceId ?? request.segment.voice ?? request.voice ?? getConfigString(context, 'defaultVoice') ?? DEFAULT_VOICE,
+        response_format: responseFormat,
+        speed: normalizeSpeed(request.rate),
+      })),
+    })
+    const audio = Buffer.from(await response.arrayBuffer())
+    if (!response.ok) {
+      const detail = audio.toString('utf8').replace(/\s+/g, ' ').trim().slice(0, 500)
+      throw new Error(detail || `OpenAI speech request failed: ${response.status}`)
+    }
+    if (audio.length < 128) throw new Error('OpenAI speech response audio was empty.')
+    return {
+      audio,
+      mimeType: getMimeType(responseFormat, response.headers.get('content-type') ?? undefined),
+      durationMs: 0,
+    }
+  }
+
+  async cloneVoice(request: VoiceCloneRequest, context: ProviderContext = {}): Promise<VoiceCloneResult> {
+    const apiKey = getApiKey(context)
+    const audio = parseAudioData(request.audioData, request.mimeType)
+    const form = new FormData()
+    form.set('name', request.name)
+    if (request.consent) form.set('consent', request.consent)
+    form.set('audio_sample', new Blob([audio.data], { type: audio.mimeType }), request.fileName || audio.fileName)
+
+    const response = await fetch(`${getBaseUrl(context)}/audio/voices`, {
+      method: 'POST',
+      headers: { authorization: `Bearer ${apiKey}` },
+      body: form,
+    })
+    const payload = await readJsonResponse<OpenAiVoicePayload>(response)
+    if (!response.ok) {
+      throw new Error(getPayloadError(payload) || `OpenAI voice clone request failed: ${response.status}`)
+    }
+    if (!payload.id) throw new Error('OpenAI voice clone response did not include id.')
+    return {
+      provider: this.id,
+      voice: {
+        voiceId: payload.id,
+        providerVoiceId: payload.id,
+        name: payload.name ?? request.name,
+        description: request.description,
+        language: request.language,
+        metadata: {
+          object: payload.object ?? null,
+          created_at: payload.created_at ?? null,
+        },
+      },
+      raw: payload,
+    }
+  }
+}
+
+const OPENAI_PRESET_VOICES: TtsVoice[] = [
+  { id: 'alloy', name: 'Alloy', locale: 'en-US', provider: 'openai' },
+  { id: 'ash', name: 'Ash', locale: 'en-US', provider: 'openai' },
+  { id: 'ballad', name: 'Ballad', locale: 'en-US', provider: 'openai' },
+  { id: 'coral', name: 'Coral', locale: 'en-US', provider: 'openai' },
+  { id: 'echo', name: 'Echo', locale: 'en-US', provider: 'openai' },
+  { id: 'fable', name: 'Fable', locale: 'en-US', provider: 'openai' },
+  { id: 'nova', name: 'Nova', locale: 'en-US', provider: 'openai' },
+  { id: 'onyx', name: 'Onyx', locale: 'en-US', provider: 'openai' },
+  { id: 'sage', name: 'Sage', locale: 'en-US', provider: 'openai' },
+  { id: 'shimmer', name: 'Shimmer', locale: 'en-US', provider: 'openai' },
+]
+
+function getApiKey(context: ProviderContext): string {
+  const apiKey = getSecretString(context, 'apiKey')
+  if (!apiKey) throw new Error('openai apiKey is required in provider settings.')
+  return apiKey
+}
+
+function getBaseUrl(context: ProviderContext): string {
+  return trimTrailingSlash(getConfigString(context, 'baseUrl') ?? DEFAULT_BASE_URL)
+}
+
+function getConfigString(context: ProviderContext, key: string): string | undefined {
+  const value = context.config?.[key]
+  if (typeof value === 'string' && value.trim()) return value.trim()
+  return undefined
+}
+
+function getSecretString(context: ProviderContext, key: string): string | undefined {
+  const value = context.secrets?.[key]
+  if (typeof value === 'string' && value.trim()) return value.trim()
+  return undefined
+}
+
+function trimTrailingSlash(value: string): string {
+  return value.replace(/\/+$/, '')
+}
+
+function normalizeResponseFormat(value: string): 'mp3' | 'opus' | 'aac' | 'flac' | 'wav' | 'pcm' {
+  const normalized = value.toLowerCase()
+  if (normalized === 'opus' || normalized === 'aac' || normalized === 'flac' || normalized === 'wav' || normalized === 'pcm') return normalized
+  return 'mp3'
+}
+
+function getMimeType(format: string, responseType: string | undefined): string {
+  const type = responseType?.split(';')[0]?.trim()
+  if (type) return type
+  if (format === 'wav' || format === 'pcm') return 'audio/wav'
+  if (format === 'aac') return 'audio/aac'
+  if (format === 'flac') return 'audio/flac'
+  if (format === 'opus') return 'audio/ogg'
+  return 'audio/mpeg'
+}
+
+function normalizeSpeed(value: string | undefined): number | undefined {
+  if (!value) return undefined
+  const parsed = Number(value)
+  return Number.isFinite(parsed) ? parsed : undefined
+}
+
+function parseAudioData(value: string, mimeType: string | undefined): { data: Buffer, mimeType: string, fileName: string } {
+  const match = /^data:([^;,]+)[^,]*,(.+)$/s.exec(value)
+  const resolvedMimeType = match?.[1] ?? mimeType ?? 'application/octet-stream'
+  const base64 = match?.[2] ?? value
+  return {
+    data: Buffer.from(base64, 'base64'),
+    mimeType: resolvedMimeType,
+    fileName: getAudioFileName(resolvedMimeType),
+  }
+}
+
+function getAudioFileName(mimeType: string): string {
+  if (mimeType.includes('wav')) return 'voice.wav'
+  if (mimeType.includes('mpeg') || mimeType.includes('mp3')) return 'voice.mp3'
+  if (mimeType.includes('flac')) return 'voice.flac'
+  if (mimeType.includes('ogg')) return 'voice.ogg'
+  if (mimeType.includes('aac')) return 'voice.aac'
+  if (mimeType.includes('webm')) return 'voice.webm'
+  if (mimeType.includes('mp4')) return 'voice.mp4'
+  return 'voice.bin'
+}
+
+function compactObject<T extends Record<string, unknown>>(value: T): Partial<T> {
+  return Object.fromEntries(Object.entries(value).filter(([, item]) => item !== undefined && item !== null && item !== '')) as Partial<T>
+}
+
+async function readJsonResponse<T>(response: Response): Promise<T> {
+  const text = await response.text()
+  if (!text.trim()) return {} as T
+  try {
+    return JSON.parse(text) as T
+  } catch {
+    return { error: { message: text.slice(0, 500) } } as T
+  }
+}
+
+function getPayloadError(payload: unknown): string | undefined {
+  if (!payload || typeof payload !== 'object') return undefined
+  const value = payload as { error?: { message?: unknown }, message?: unknown, detail?: unknown }
+  if (typeof value.error?.message === 'string') return value.error.message
+  if (typeof value.message === 'string') return value.message
+  if (typeof value.detail === 'string') return value.detail
+  return undefined
+}

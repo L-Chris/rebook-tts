@@ -1,5 +1,13 @@
 import { PrismaClient } from '@prisma/client'
-import type { JsonObject, ProviderConfigInput, ProviderConfigRecord, ProviderRuntimeConfig, VoiceInput, VoiceRecord } from './types.js'
+import type {
+  JsonObject,
+  ProviderConfigInput,
+  ProviderConfigRecord,
+  ProviderRuntimeConfig,
+  VoiceInput,
+  VoiceProviderLinkRecord,
+  VoiceRecord,
+} from './types.js'
 
 const globalForPrisma = globalThis as unknown as {
   prisma?: PrismaClient
@@ -85,44 +93,70 @@ export class ProviderConfigStore {
   async listVoices(providerId?: string): Promise<VoiceRecord[]> {
     if (!this.prisma) {
       const voices = globalForPrisma.voices ?? []
-      return providerId ? voices.filter(voice => voice.providerId === providerId) : voices
+      return providerId ? voices.filter(voice => voice.links.some(link => link.providerId === providerId)) : voices
     }
     const records = await this.prisma.voice.findMany({
-      where: providerId ? { providerId } : undefined,
-      orderBy: [{ providerId: 'asc' }, { name: 'asc' }],
+      where: providerId ? { providerLinks: { some: { providerId } } } : undefined,
+      include: { providerLinks: true },
+      orderBy: [{ name: 'asc' }],
     })
     return records.map(toVoiceRecord)
   }
 
   async getVoice(providerId: string, voiceId: string): Promise<VoiceRecord | null> {
     if (!this.prisma) {
-      return (globalForPrisma.voices ?? []).find(voice => voice.providerId === providerId && voice.voiceId === voiceId) ?? null
+      return (globalForPrisma.voices ?? []).find(voice => (
+        voice.voiceId === voiceId
+        || voice.links.some(link => link.providerId === providerId && (link.providerVoiceId === voiceId || link.providerVoiceKey === voiceId))
+      )) ?? null
     }
     const record = await this.prisma.voice.findUnique({
-      where: { providerId_voiceId: { providerId, voiceId } },
+      where: { voiceId },
+      include: { providerLinks: true },
     })
-    return record ? toVoiceRecord(record) : null
+    if (record) return toVoiceRecord(record)
+    const link = await this.prisma.voiceProviderLink.findFirst({
+      where: {
+        providerId,
+        OR: [
+          { providerVoiceId: voiceId },
+          { providerVoiceKey: voiceId },
+        ],
+      },
+      include: { voice: { include: { providerLinks: true } } },
+    })
+    return link ? toVoiceRecord(link.voice) : null
   }
 
   async upsertVoice(input: VoiceInput): Promise<VoiceRecord> {
     const metadata = sanitizeObject(input.metadata)
+    const voiceId = input.voiceId?.trim() || createLocalVoiceId(input.name)
     if (!this.prisma) {
       const voices = globalForPrisma.voices ?? []
-      const index = voices.findIndex(voice => voice.providerId === input.providerId && voice.voiceId === input.voiceId)
+      const index = voices.findIndex(voice => voice.voiceId === voiceId)
       const now = new Date().toISOString()
+      const existing = index >= 0 ? voices[index] : undefined
       const record: VoiceRecord = {
-        id: index >= 0 ? voices[index].id : `${input.providerId}:${input.voiceId}`,
-        providerId: input.providerId,
-        voiceId: input.voiceId,
-        providerVoiceId: input.providerVoiceId,
+        id: existing?.id ?? voiceId,
+        voiceId,
         name: input.name,
         description: input.description,
         language: input.language,
         previewMimeType: input.previewMimeType,
         previewAudio: input.previewAudio,
         metadata,
-        createdAt: index >= 0 ? voices[index].createdAt : now,
+        links: existing?.links ?? [],
+        createdAt: existing?.createdAt ?? now,
         updatedAt: now,
+      }
+      if (input.providerLink) {
+        const link = toMemoryVoiceProviderLink(record.id, input.providerLink, now)
+        const linkIndex = record.links.findIndex(item => (
+          item.providerId === link.providerId
+          && item.providerAccountId === link.providerAccountId
+        ))
+        if (linkIndex >= 0) record.links[linkIndex] = { ...record.links[linkIndex], ...link, updatedAt: now }
+        else record.links.push(link)
       }
       if (index >= 0) voices[index] = record
       else voices.push(record)
@@ -130,11 +164,9 @@ export class ProviderConfigStore {
       return record
     }
     const record = await this.prisma.voice.upsert({
-      where: { providerId_voiceId: { providerId: input.providerId, voiceId: input.voiceId } },
+      where: { voiceId },
       create: {
-        providerId: input.providerId,
-        voiceId: input.voiceId,
-        providerVoiceId: input.providerVoiceId,
+        voiceId,
         name: input.name,
         description: input.description,
         language: input.language,
@@ -143,7 +175,6 @@ export class ProviderConfigStore {
         metadata,
       },
       update: {
-        providerVoiceId: input.providerVoiceId,
         name: input.name,
         description: input.description,
         language: input.language,
@@ -151,8 +182,45 @@ export class ProviderConfigStore {
         previewAudio: input.previewAudio,
         metadata,
       },
+      include: { providerLinks: true },
     })
-    return toVoiceRecord(record)
+    if (!input.providerLink) return toVoiceRecord(record)
+    const providerLink = input.providerLink
+    const providerAccountId = providerLink.providerAccountId?.trim() || 'default'
+    const providerVoiceKey = providerLink.providerVoiceKey?.trim()
+      || providerLink.providerVoiceId?.trim()
+      || voiceId
+    await this.prisma.voiceProviderLink.upsert({
+      where: {
+        voiceRecordId_providerId_providerAccountId: {
+          voiceRecordId: record.id,
+          providerId: providerLink.providerId,
+          providerAccountId,
+        },
+      },
+      create: {
+        voiceRecordId: record.id,
+        providerId: providerLink.providerId,
+        providerAccountId,
+        providerVoiceId: providerLink.providerVoiceId,
+        providerVoiceKey,
+        previewMimeType: providerLink.previewMimeType,
+        previewAudio: providerLink.previewAudio,
+        metadata: sanitizeObject(providerLink.metadata),
+      },
+      update: {
+        providerVoiceId: providerLink.providerVoiceId,
+        providerVoiceKey,
+        previewMimeType: providerLink.previewMimeType,
+        previewAudio: providerLink.previewAudio,
+        metadata: sanitizeObject(providerLink.metadata),
+      },
+    })
+    const updated = await this.prisma.voice.findUniqueOrThrow({
+      where: { id: record.id },
+      include: { providerLinks: true },
+    })
+    return toVoiceRecord(updated)
   }
 }
 
@@ -170,30 +238,97 @@ function toJsonObject(value: unknown): JsonObject {
 
 function toVoiceRecord(record: {
   id: string
-  providerId: string
   voiceId: string
-  providerVoiceId: string | null
   name: string
   description: string | null
   language: string | null
   previewMimeType: string | null
   previewAudio: string | null
   metadata: unknown
+  providerLinks?: Array<{
+    id: string
+    voiceRecordId: string
+    providerId: string
+    providerAccountId: string
+    providerVoiceId: string | null
+    providerVoiceKey: string
+    previewMimeType: string | null
+    previewAudio: string | null
+    metadata: unknown
+    createdAt: Date
+    updatedAt: Date
+  }>
   createdAt: Date
   updatedAt: Date
 }): VoiceRecord {
   return {
     id: record.id,
-    providerId: record.providerId,
     voiceId: record.voiceId,
-    providerVoiceId: record.providerVoiceId ?? undefined,
     name: record.name,
     description: record.description ?? undefined,
     language: record.language ?? undefined,
     previewMimeType: record.previewMimeType ?? undefined,
     previewAudio: record.previewAudio ?? undefined,
     metadata: toJsonObject(record.metadata),
+    links: (record.providerLinks ?? []).map(toVoiceProviderLinkRecord),
     createdAt: record.createdAt.toISOString(),
     updatedAt: record.updatedAt.toISOString(),
   }
+}
+
+function toVoiceProviderLinkRecord(record: {
+  id: string
+  voiceRecordId: string
+  providerId: string
+  providerAccountId: string
+  providerVoiceId: string | null
+  providerVoiceKey: string
+  previewMimeType: string | null
+  previewAudio: string | null
+  metadata: unknown
+  createdAt: Date
+  updatedAt: Date
+}): VoiceProviderLinkRecord {
+  return {
+    id: record.id,
+    voiceRecordId: record.voiceRecordId,
+    providerId: record.providerId,
+    providerAccountId: record.providerAccountId,
+    providerVoiceId: record.providerVoiceId ?? undefined,
+    providerVoiceKey: record.providerVoiceKey,
+    previewMimeType: record.previewMimeType ?? undefined,
+    previewAudio: record.previewAudio ?? undefined,
+    metadata: toJsonObject(record.metadata),
+    createdAt: record.createdAt.toISOString(),
+    updatedAt: record.updatedAt.toISOString(),
+  }
+}
+
+function toMemoryVoiceProviderLink(
+  voiceRecordId: string,
+  input: NonNullable<VoiceInput['providerLink']>,
+  now: string,
+): VoiceProviderLinkRecord {
+  const providerAccountId = input.providerAccountId?.trim() || 'default'
+  const providerVoiceKey = input.providerVoiceKey?.trim()
+    || input.providerVoiceId?.trim()
+    || voiceRecordId
+  return {
+    id: `${voiceRecordId}:${input.providerId}:${providerAccountId}`,
+    voiceRecordId,
+    providerId: input.providerId,
+    providerAccountId,
+    providerVoiceId: input.providerVoiceId,
+    providerVoiceKey,
+    previewMimeType: input.previewMimeType,
+    previewAudio: input.previewAudio,
+    metadata: sanitizeObject(input.metadata),
+    createdAt: now,
+    updatedAt: now,
+  }
+}
+
+function createLocalVoiceId(name: string): string {
+  const normalized = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 40)
+  return `voice_${normalized || Math.random().toString(36).slice(2, 10)}_${Date.now().toString(36)}`
 }

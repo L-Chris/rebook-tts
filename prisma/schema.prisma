@@ -21,18 +21,34 @@ model ProviderConfig {
 
 model Voice {
   id              String   @id @default(cuid())
-  providerId      String
-  voiceId         String
-  providerVoiceId String?
+  voiceId         String   @unique
   name            String
   description     String?  @db.Text
   language        String?
   previewMimeType String?
   previewAudio    String?  @db.LongText
   metadata        Json?
+  providerLinks   VoiceProviderLink[]
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
+}
 
-  @@unique([providerId, voiceId])
+model VoiceProviderLink {
+  id                String   @id @default(cuid())
+  voiceRecordId     String
+  voice             Voice    @relation(fields: [voiceRecordId], references: [id], onDelete: Cascade)
+  providerId        String
+  providerAccountId String   @default("default")
+  providerVoiceId   String?
+  providerVoiceKey  String
+  previewMimeType   String?
+  previewAudio      String?  @db.LongText
+  metadata          Json?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
   @@index([providerId])
+  @@index([voiceRecordId])
+  @@unique([voiceRecordId, providerId, providerAccountId])
+  @@unique([providerId, providerAccountId, providerVoiceKey])
 }

@@ -4,6 +4,7 @@ import { BilibiliAsrProvider } from './bilibili-asr.js'
 import { MimoTtsProvider } from './mimo.js'
 import { MockAsrProvider } from './mock-asr.js'
 import { MockTtsProvider } from './mock.js'
+import { OpenAiProvider } from './openai.js'
 import type {
   AsrProvider,
   AudioIsolationProvider,
@@ -12,10 +13,12 @@ import type {
   ProviderRuntimeConfig,
   SoundEffectProvider,
   TtsProvider,
+  VoiceCloneProvider,
   VoiceDesignProvider,
 } from '../types.js'
 
 const COMMON_PROVIDER_FIELDS: ProviderFieldDefinition[] = [
+  { key: 'accountId', label: 'Provider Account ID', type: 'text', placeholder: 'default' },
   { key: 'timeoutMs', label: 'Timeout (ms)', type: 'number', placeholder: '45000' },
 ]
 const INTERNAL_PROVIDER_IDS = new Set(['mock', 'mock-asr'])
@@ -25,6 +28,7 @@ const asrProviders = new Map<string, AsrProvider>()
 const soundEffectProviders = new Map<string, SoundEffectProvider>()
 const audioIsolationProviders = new Map<string, AudioIsolationProvider>()
 const voiceDesignProviders = new Map<string, VoiceDesignProvider>()
+const voiceCloneProviders = new Map<string, VoiceCloneProvider>()
 
 export function registerTtsProvider(provider: TtsProvider): void {
   ttsProviders.set(provider.id, provider)
@@ -44,6 +48,10 @@ export function registerAudioIsolationProvider(provider: AudioIsolationProvider)
 
 export function registerVoiceDesignProvider(provider: VoiceDesignProvider): void {
   voiceDesignProviders.set(provider.id, provider)
+}
+
+export function registerVoiceCloneProvider(provider: VoiceCloneProvider): void {
+  voiceCloneProviders.set(provider.id, provider)
 }
 
 export function getTtsProvider(id = 'mock'): TtsProvider {
@@ -86,12 +94,21 @@ export function getVoiceDesignProvider(id: string): VoiceDesignProvider {
   return provider
 }
 
-export function getProvider(id: string): TtsProvider | AsrProvider | SoundEffectProvider | AudioIsolationProvider | VoiceDesignProvider {
+export function getVoiceCloneProvider(id: string): VoiceCloneProvider {
+  const provider = voiceCloneProviders.get(id)
+  if (!provider) {
+    throw new Error(`Unknown voice clone provider: ${id}`)
+  }
+  return provider
+}
+
+export function getProvider(id: string): TtsProvider | AsrProvider | SoundEffectProvider | AudioIsolationProvider | VoiceDesignProvider | VoiceCloneProvider {
   const provider = ttsProviders.get(id)
     ?? asrProviders.get(id)
     ?? soundEffectProviders.get(id)
     ?? audioIsolationProviders.get(id)
     ?? voiceDesignProviders.get(id)
+    ?? voiceCloneProviders.get(id)
   if (!provider) {
     throw new Error(`Unknown provider: ${id}`)
   }
@@ -122,6 +139,10 @@ export function listVoiceDesignProviders(): VoiceDesignProvider[] {
   return [...voiceDesignProviders.values()]
 }
 
+export function listVoiceCloneProviders(): VoiceCloneProvider[] {
+  return [...voiceCloneProviders.values()]
+}
+
 export function listProviderDefinitions(
   configs = new Map<string, ProviderRuntimeConfig>(),
   options: { includeInternal?: boolean } = {},
@@ -133,6 +154,7 @@ export function listProviderDefinitions(
       ...soundEffectProviders.values(),
       ...audioIsolationProviders.values(),
       ...voiceDesignProviders.values(),
+      ...voiceCloneProviders.values(),
     ].map(provider => [provider.id, provider]),
   ).values()].filter(provider => options.includeInternal || !INTERNAL_PROVIDER_IDS.has(provider.id))
   return providers.map(provider => {
@@ -174,15 +196,21 @@ registerTtsProvider(mockProvider)
 registerSoundEffectProvider(mockProvider)
 registerAudioIsolationProvider(mockProvider)
 registerVoiceDesignProvider(mockProvider)
+registerVoiceCloneProvider(mockProvider)
+const openAiProvider = new OpenAiProvider()
+registerTtsProvider(openAiProvider)
+registerVoiceCloneProvider(openAiProvider)
 registerTtsProvider(new EdgeTtsProvider())
 const mimoProvider = new MimoTtsProvider()
 registerTtsProvider(mimoProvider)
+registerVoiceCloneProvider(mimoProvider)
 const elevenLabsProvider = new ElevenLabsProvider()
 registerTtsProvider(elevenLabsProvider)
 registerAsrProvider(elevenLabsProvider)
 registerSoundEffectProvider(elevenLabsProvider)
 registerAudioIsolationProvider(elevenLabsProvider)
 registerVoiceDesignProvider(elevenLabsProvider)
+registerVoiceCloneProvider(elevenLabsProvider)
 registerAsrProvider(new MockAsrProvider())
 registerAsrProvider(mimoProvider)
 registerVoiceDesignProvider(mimoProvider)

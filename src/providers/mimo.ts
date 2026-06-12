@@ -6,6 +6,9 @@ import type {
   TranscribeResult,
   TtsProvider,
   TtsVoice,
+  VoiceCloneProvider,
+  VoiceCloneRequest,
+  VoiceCloneResult,
   VoiceDesignProvider,
   VoiceDesignRequest,
   VoiceDesignResult,
@@ -37,10 +40,10 @@ interface MimoCompletionResponse {
   }
 }
 
-export class MimoTtsProvider implements TtsProvider, AsrProvider, VoiceDesignProvider {
+export class MimoTtsProvider implements TtsProvider, AsrProvider, VoiceDesignProvider, VoiceCloneProvider {
   readonly id = 'mimo'
   readonly name = 'Xiaomi MiMo'
-  readonly capabilities = { tts: true, asr: true, voiceDesign: true }
+  readonly capabilities = { tts: true, asr: true, voiceDesign: true, voiceClone: true }
   readonly fields = [
     { key: 'apiKey', label: 'API Key', type: 'password' as const, secret: true },
     { key: 'baseUrl', label: 'Base URL', type: 'url' as const, placeholder: DEFAULT_BASE_URL },
@@ -153,6 +156,26 @@ export class MimoTtsProvider implements TtsProvider, AsrProvider, VoiceDesignPro
           model: getConfigString(context, 'voiceDesignModel') ?? DEFAULT_VOICE_DESIGN_MODEL,
         },
       }],
+    }
+  }
+
+  async cloneVoice(request: VoiceCloneRequest): Promise<VoiceCloneResult> {
+    const audio = normalizeAudioDataUrl(request.audioData, request.mimeType)
+    const voiceId = `mimo_${randomUUID()}`
+    return {
+      provider: this.id,
+      voice: {
+        voiceId,
+        name: request.name,
+        description: request.description,
+        language: request.language,
+        previewAudioData: audio,
+        previewMimeType: getDataUrlMimeType(audio) ?? request.mimeType ?? 'audio/wav',
+        metadata: {
+          cloned_from_audio_sample: true,
+          provider_voice_id: null,
+        },
+      },
     }
   }
 
@@ -269,6 +292,15 @@ function getMimeType(format: 'mp3' | 'wav'): string {
 function stripDataUrlPrefix(value: string): string {
   const comma = value.indexOf(',')
   return value.startsWith('data:') && comma >= 0 ? value.slice(comma + 1) : value
+}
+
+function normalizeAudioDataUrl(value: string, mimeType = 'audio/wav'): string {
+  if (value.startsWith('data:')) return value
+  return `data:${mimeType};base64,${value}`
+}
+
+function getDataUrlMimeType(value: string): string | undefined {
+  return /^data:([^;,]+)/.exec(value)?.[1]
 }
 
 function getConfigString(context: ProviderContext, key: string): string | undefined {

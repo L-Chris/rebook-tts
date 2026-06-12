@@ -6,6 +6,9 @@ import type {
   SynthesizeRequest,
   TtsProvider,
   TtsVoice,
+  VoiceCloneProvider,
+  VoiceCloneRequest,
+  VoiceCloneResult,
   VoiceDesignProvider,
   VoiceDesignRequest,
   VoiceDesignResult,
@@ -13,10 +16,10 @@ import type {
 
 const SAMPLE_RATE = 24_000
 
-export class MockTtsProvider implements TtsProvider, SoundEffectProvider, AudioIsolationProvider, VoiceDesignProvider {
+export class MockTtsProvider implements TtsProvider, SoundEffectProvider, AudioIsolationProvider, VoiceDesignProvider, VoiceCloneProvider {
   readonly id = 'mock'
   readonly name = 'Mock WAV Provider'
-  readonly capabilities = { tts: true, soundEffects: true, isolation: true, voiceDesign: true }
+  readonly capabilities = { tts: true, soundEffects: true, isolation: true, voiceDesign: true, voiceClone: true }
 
   async listVoices(): Promise<TtsVoice[]> {
     return [
@@ -57,6 +60,25 @@ export class MockTtsProvider implements TtsProvider, SoundEffectProvider, AudioI
         previewMimeType: 'audio/wav',
         metadata: {},
       }],
+    }
+  }
+
+  async cloneVoice(request: VoiceCloneRequest): Promise<VoiceCloneResult> {
+    const voiceId = `mock-clone-${getFrequency(request.name)}`
+    return {
+      provider: this.id,
+      voice: {
+        voiceId,
+        providerVoiceId: voiceId,
+        name: request.name,
+        description: request.description,
+        language: request.language,
+        previewAudioData: request.audioData.startsWith('data:')
+          ? request.audioData
+          : `data:${request.mimeType ?? 'audio/wav'};base64,${request.audioData}`,
+        previewMimeType: request.mimeType ?? 'audio/wav',
+        metadata: {},
+      },
     }
   }
 }

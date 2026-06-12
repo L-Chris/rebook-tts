@@ -11,6 +11,9 @@ import type {
   TranscribeResult,
   TtsProvider,
   TtsVoice,
+  VoiceCloneProvider,
+  VoiceCloneRequest,
+  VoiceCloneResult,
   VoiceDesignProvider,
   VoiceDesignRequest,
   VoiceDesignResult,
@@ -50,10 +53,15 @@ interface ElevenLabsDesignPayload {
   text?: string
 }
 
-export class ElevenLabsProvider implements TtsProvider, AsrProvider, SoundEffectProvider, AudioIsolationProvider, VoiceDesignProvider {
+interface ElevenLabsClonePayload {
+  voice_id?: string
+  requires_verification?: boolean
+}
+
+export class ElevenLabsProvider implements TtsProvider, AsrProvider, SoundEffectProvider, AudioIsolationProvider, VoiceDesignProvider, VoiceCloneProvider {
   readonly id = 'elevenlabs'
   readonly name = 'ElevenLabs'
-  readonly capabilities = { tts: true, asr: true, soundEffects: true, isolation: true, voiceDesign: true }
+  readonly capabilities = { tts: true, asr: true, soundEffects: true, isolation: true, voiceDesign: true, voiceClone: true }
   readonly fields = [
     { key: 'apiKey', label: 'API Key', type: 'password' as const, secret: true },
     { key: 'baseUrl', label: 'Base URL', type: 'url' as const, placeholder: DEFAULT_BASE_URL },
@@ -230,6 +238,40 @@ export class ElevenLabsProvider implements TtsProvider, AsrProvider, SoundEffect
       provider: this.id,
       text: payload.text,
       voices,
+      raw: payload,
+    }
+  }
+
+  async cloneVoice(request: VoiceCloneRequest, context: ProviderContext = {}): Promise<VoiceCloneResult> {
+    const apiKey = getApiKey(context)
+    const audio = parseAudioData(request.audioData, request.mimeType)
+    const form = new FormData()
+    form.set('name', request.name)
+    if (request.description) form.set('description', request.description)
+    form.set('files[]', new Blob([audio.data], { type: audio.mimeType }), request.fileName || audio.fileName)
+
+    const response = await fetch(`${getBaseUrl(context)}/voices/add`, {
+      method: 'POST',
+      headers: { 'xi-api-key': apiKey },
+      body: form,
+    })
+    const payload = await readJsonResponse<ElevenLabsClonePayload>(response)
+    if (!response.ok) {
+      throw new Error(getPayloadError(payload) || `ElevenLabs voice clone request failed: ${response.status}`)
+    }
+    if (!payload.voice_id) throw new Error('ElevenLabs voice clone response did not include voice_id.')
+    return {
+      provider: this.id,
+      voice: {
+        voiceId: payload.voice_id,
+        providerVoiceId: payload.voice_id,
+        name: request.name,
+        description: request.description,
+        language: request.language,
+        metadata: {
+          requires_verification: payload.requires_verification ?? null,
+        },
+      },
       raw: payload,
     }
   }

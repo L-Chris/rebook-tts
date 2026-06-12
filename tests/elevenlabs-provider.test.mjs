@@ -211,6 +211,45 @@ test('ElevenLabs provider sends voice design requests', async () => {
   assert.match(result.voices[0].previewAudioData, /^data:audio\/mpeg;base64,/)
 })
 
+test('ElevenLabs provider sends voice clone requests', async () => {
+  let captured
+  globalThis.fetch = async (url, init) => {
+    captured = {
+      url: String(url),
+      headers: init.headers,
+      name: init.body.get('name'),
+      description: init.body.get('description'),
+      file: init.body.get('files[]'),
+    }
+    return new Response(JSON.stringify({
+      voice_id: 'eleven-clone-1',
+      requires_verification: false,
+    }), {
+      status: 200,
+      headers: { 'content-type': 'application/json' },
+    })
+  }
+
+  const provider = new ElevenLabsProvider()
+  const result = await provider.cloneVoice({
+    name: 'Narrator Clone',
+    description: 'A clean narrator sample.',
+    audioData: `data:audio/wav;base64,${Buffer.alloc(256, 1).toString('base64')}`,
+    mimeType: 'audio/wav',
+  }, {
+    config: {},
+    secrets: { apiKey: 'test-eleven-key' },
+  })
+
+  assert.equal(captured.url, 'https://api.elevenlabs.io/v1/voices/add')
+  assert.equal(captured.headers['xi-api-key'], 'test-eleven-key')
+  assert.equal(captured.name, 'Narrator Clone')
+  assert.equal(captured.description, 'A clean narrator sample.')
+  assert.equal(captured.file.type, 'audio/wav')
+  assert.equal(result.voice.voiceId, 'eleven-clone-1')
+  assert.equal(result.voice.providerVoiceId, 'eleven-clone-1')
+})
+
 test('ElevenLabs provider exposes TTS, ASR, and sound effect metadata', async () => {
   const provider = new ElevenLabsProvider()
   const voices = await provider.listVoices()
@@ -219,6 +258,7 @@ test('ElevenLabs provider exposes TTS, ASR, and sound effect metadata', async ()
   assert.equal(provider.capabilities.soundEffects, true)
   assert.equal(provider.capabilities.isolation, true)
   assert.equal(provider.capabilities.voiceDesign, true)
+  assert.equal(provider.capabilities.voiceClone, true)
   assert.equal(voices[0].provider, 'elevenlabs')
 
   const providers = listProviderDefinitions()
@@ -227,4 +267,5 @@ test('ElevenLabs provider exposes TTS, ASR, and sound effect metadata', async ()
   assert.equal(elevenlabs.capabilities.tts, true)
   assert.equal(elevenlabs.capabilities.asr, true)
   assert.equal(elevenlabs.capabilities.soundEffects, true)
+  assert.equal(elevenlabs.capabilities.voiceClone, true)
 })

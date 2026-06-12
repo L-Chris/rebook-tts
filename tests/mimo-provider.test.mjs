@@ -123,10 +123,26 @@ test('Mimo provider uses voice_id data URLs with the voice clone model', async (
   assert.match(captured.body.audio.voice, /^data:audio\/wav;base64,/)
 })
 
+test('Mimo provider clones a local audio sample without provider voice id', async () => {
+  const provider = new MimoTtsProvider()
+  const result = await provider.cloneVoice({
+    name: 'Local sample',
+    audioData: `data:audio/wav;base64,${Buffer.alloc(256, 1).toString('base64')}`,
+    mimeType: 'audio/wav',
+  })
+
+  assert.equal(result.provider, 'mimo')
+  assert.match(result.voice.voiceId, /^mimo_/)
+  assert.equal(result.voice.providerVoiceId, undefined)
+  assert.match(result.voice.previewAudioData, /^data:audio\/wav;base64,/)
+  assert.equal(result.voice.metadata.provider_voice_id, null)
+})
+
 test('Mimo provider exposes voice design capability metadata', async () => {
   const provider = new MimoTtsProvider()
   const voices = await provider.listVoices()
   assert.equal(provider.capabilities.voiceDesign, true)
+  assert.equal(provider.capabilities.voiceClone, true)
   assert.equal(provider.capabilities.asr, true)
   assert.ok(voices.length > 0)
   assert.equal(voices[0].capabilities.voiceDesign, true)
@@ -136,6 +152,7 @@ test('Mimo provider exposes voice design capability metadata', async () => {
   assert.equal(mimoProviders.length, 1)
   const [mimo] = mimoProviders
   assert.equal(mimo.capabilities.voiceDesign, true)
+  assert.equal(mimo.capabilities.voiceClone, true)
   assert.equal(mimo.capabilities.asr, true)
 })
 
