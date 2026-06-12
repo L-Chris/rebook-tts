@@ -24,8 +24,10 @@ test('OpenAI provider sends text-to-speech requests', async () => {
 
   const provider = new OpenAiProvider()
   const result = await provider.synthesize({
+    model: 'tts-1-hd',
     voiceId: 'voice_custom_1',
     outputFormat: 'mp3',
+    instructions: 'Speak with a warm narration style.',
     segment: {
       id: 'tts',
       text: 'Hello from OpenAI.',
@@ -40,10 +42,11 @@ test('OpenAI provider sends text-to-speech requests', async () => {
   assert.equal(captured.url, 'https://api.openai.com/v1/audio/speech')
   assert.equal(captured.headers.authorization, 'Bearer test-openai-key')
   assert.deepEqual(captured.body, {
-    model: 'gpt-4o-mini-tts',
+    model: 'tts-1-hd',
     input: 'Hello from OpenAI.',
     voice: 'voice_custom_1',
     response_format: 'mp3',
+    instructions: 'Speak with a warm narration style.',
   })
 })
 
@@ -63,11 +66,13 @@ test('OpenAI provider streams text-to-speech requests', async () => {
 
   const provider = new OpenAiProvider()
   const result = await provider.streamSynthesize({
+    model: 'gpt-4o-mini-tts',
     outputFormat: 'mp3',
     streamFormat: 'sse',
     segment: {
       id: 'tts',
       text: 'Hello from OpenAI.',
+      stylePrompt: 'Sound calm.',
     },
   }, {
     config: { ttsModel: 'gpt-4o-mini-tts' },
@@ -84,6 +89,7 @@ test('OpenAI provider streams text-to-speech requests', async () => {
     voice: 'alloy',
     response_format: 'mp3',
     stream_format: 'sse',
+    instructions: 'Sound calm.',
   })
 })
 

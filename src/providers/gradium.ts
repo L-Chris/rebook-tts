@@ -83,6 +83,7 @@ export class GradiumProvider implements TtsProvider, AsrProvider, VoiceCloneProv
       body: JSON.stringify({
         text: request.segment.text.trim(),
         voice_id: getVoiceId(request, context),
+        model_name: request.model ?? getConfigString(context, 'ttsModel') ?? DEFAULT_MODEL,
         output_format: outputFormat,
         only_audio: true,
       }),
@@ -220,7 +221,7 @@ function createGradiumAudioStream(request: SynthesizeRequest, context: ProviderC
         ws.send(JSON.stringify(compactObject({
           type: 'setup',
           voice_id: getVoiceId(request, context),
-          model_name: getConfigString(context, 'ttsModel') ?? DEFAULT_MODEL,
+          model_name: request.model ?? getConfigString(context, 'ttsModel') ?? DEFAULT_MODEL,
           output_format: outputFormat,
           close_ws_on_eos: true,
         })))

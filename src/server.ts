@@ -50,6 +50,7 @@ const port = Number(process.env.PORT ?? 4177)
 const audioDir = process.env.TTS_AUDIO_DIR ?? join(rootDir, 'audio')
 const publicDir = join(rootDir, 'public')
 const configStore = new ProviderConfigStore()
+const OPENAI_SPEECH_MODELS = new Set(['gpt-4o-mini-tts', 'tts-1', 'tts-1-hd'])
 
 await mkdir(audioDir, { recursive: true })
 
@@ -159,7 +160,8 @@ server.listen(port, () => {
 
 async function createOpenAiSpeech(req: IncomingMessage, res: ServerResponse): Promise<void> {
   const body = await readJson<Record<string, unknown>>(req)
-  const providerId = getOpenAiModelProvider(body.model, body.provider)
+  const target = resolveOpenAiSpeechTarget(body.model, body.provider)
+  const providerId = target.providerId
   assertPublicProviderAccess(providerId)
   const input = typeof body.input === 'string' ? body.input : ''
   if (!input.trim()) throw new Error('input is required')
@@ -169,13 +171,20 @@ async function createOpenAiSpeech(req: IncomingMessage, res: ServerResponse): Pr
   ensureEnabled(provider.id, context)
   const responseFormat = typeof body.response_format === 'string' ? body.response_format : undefined
   const streamFormat = normalizeSpeechStreamFormat(body.stream_format)
+  const voice = normalizeSpeechVoice(body.voice)
   const request = normalizeSynthesizeInput(provider.id, {
+    model: target.model,
     text: input,
-    voice: typeof body.voice === 'string' ? body.voice : undefined,
-    voiceId: typeof body.voice_id === 'string' ? body.voice_id : typeof body.voiceId === 'string' ? body.voiceId : undefined,
+    voice: voice.voice,
+    voiceId: typeof body.voice_id === 'string'
+      ? body.voice_id
+      : typeof body.voiceId === 'string'
+        ? body.voiceId
+        : voice.voiceId,
     outputFormat: responseFormat,
     streamFormat,
     speed: typeof body.speed === 'number' ? body.speed : undefined,
+    instructions: typeof body.instructions === 'string' ? body.instructions : undefined,
   })
   await resolveVoiceIdForSynthesis(provider.id, request)
   const timeoutMs = getProviderTimeoutMs(context)
@@ -445,6 +454,7 @@ function normalizeSynthesizeInput(providerId: string, input: unknown): Synthesiz
   if (!text.trim()) throw new Error('input.text is required for synthesize')
   return {
     provider: providerId,
+    model: typeof value.model === 'string' ? value.model : undefined,
     voice: typeof value.voice === 'string' ? value.voice : undefined,
     voiceId: typeof value.voiceId === 'string' ? value.voiceId : undefined,
     lang: typeof value.lang === 'string' ? value.lang : undefined,
@@ -455,6 +465,7 @@ function normalizeSynthesizeInput(providerId: string, input: unknown): Synthesiz
     volume: typeof value.volume === 'string' ? value.volume : undefined,
     voicePrompt: typeof value.voicePrompt === 'string' ? value.voicePrompt : undefined,
     stylePrompt: typeof value.stylePrompt === 'string' ? value.stylePrompt : undefined,
+    instructions: typeof value.instructions === 'string' ? value.instructions : undefined,
     segment: {
       id: typeof value.id === 'string' ? value.id : randomUUID(),
       text,
@@ -829,6 +840,41 @@ function getOpenAiModelProvider(model: unknown, provider: unknown): string {
       : ''
   if (!providerId) throw new Error('model is required')
   return providerId
+}
+
+function resolveOpenAiSpeechTarget(model: unknown, provider: unknown): { providerId: string, model?: string } {
+  const modelId = typeof model === 'string' ? model.trim() : ''
+  const explicitProvider = typeof provider === 'string' ? provider.trim() : ''
+  if (explicitProvider) {
+    return { providerId: explicitProvider, model: modelId || undefined }
+  }
+  if (!modelId) throw new Error('model is required')
+  if (hasTtsProvider(modelId)) {
+    return { providerId: modelId }
+  }
+  if (OPENAI_SPEECH_MODELS.has(modelId)) {
+    return { providerId: 'openai', model: modelId }
+  }
+  return { providerId: 'openai', model: modelId }
+}
+
+function hasTtsProvider(id: string): boolean {
+  try {
+    getTtsProvider(id)
+    return true
+  } catch {
+    return false
+  }
+}
+
+function normalizeSpeechVoice(value: unknown): { voice?: string, voiceId?: string } {
+  if (typeof value === 'string') return { voice: value }
+  if (!value || typeof value !== 'object') return {}
+  const record = value as Record<string, unknown>
+  if (typeof record.voice_id === 'string') return { voiceId: record.voice_id }
+  if (typeof record.voiceId === 'string') return { voiceId: record.voiceId }
+  if (typeof record.id === 'string') return { voiceId: record.id }
+  return {}
 }
 
 function normalizeSpeechMimeType(responseFormat: string | undefined, providerMimeType: string): string {

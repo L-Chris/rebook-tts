@@ -43,6 +43,7 @@ test('Gradium provider sends text-to-speech requests', async () => {
   assert.deepEqual(captured.body, {
     text: 'Hello from Gradium.',
     voice_id: 'gradium-voice-1',
+    model_name: 'default',
     output_format: 'pcm_16000',
     only_audio: true,
   })

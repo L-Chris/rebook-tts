@@ -246,7 +246,7 @@ export class MimoTtsProvider implements TtsProvider, AsrProvider, VoiceDesignPro
       body: {
         model: designedVoice
           ? getConfigString(context, 'voiceCloneModel') ?? DEFAULT_VOICE_CLONE_MODEL
-          : getConfigString(context, 'ttsModel') ?? DEFAULT_TTS_MODEL,
+          : request.model ?? getConfigString(context, 'ttsModel') ?? DEFAULT_TTS_MODEL,
         messages: buildMessages(text, undefined, stylePrompt),
         audio: {
           format,

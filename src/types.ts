@@ -75,6 +75,7 @@ export interface TtsSegment {
 
 export interface SynthesizeRequest {
   provider?: string
+  model?: string
   voice?: string
   voiceId?: string
   lang?: string
@@ -85,6 +86,7 @@ export interface SynthesizeRequest {
   volume?: string
   voicePrompt?: string
   stylePrompt?: string
+  instructions?: string
   segment: TtsSegment
 }
 

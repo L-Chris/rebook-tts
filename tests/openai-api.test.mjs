@@ -109,6 +109,43 @@ test('POST /v1/audio/speech returns generated audio bytes', async () => {
   assert.equal(audio.subarray(8, 12).toString('ascii'), 'WAVE')
 })
 
+test('POST /v1/audio/speech accepts provider extension with OpenAI-style model', async () => {
+  const response = await fetch(`${baseUrl}/v1/audio/speech`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      provider: 'mock',
+      model: 'test-tts-model',
+      input: 'hello with provider extension',
+      voice: 'mock-narrator',
+      response_format: 'wav',
+      instructions: 'Speak clearly.',
+    }),
+  })
+  const audio = Buffer.from(await response.arrayBuffer())
+
+  assert.equal(response.status, 200)
+  assert.match(response.headers.get('content-type'), /^audio\/wav/)
+  assert.equal(audio.subarray(0, 4).toString('ascii'), 'RIFF')
+  assert.equal(audio.subarray(8, 12).toString('ascii'), 'WAVE')
+})
+
+test('POST /v1/audio/speech treats OpenAI speech models as models, not providers', async () => {
+  const response = await fetch(`${baseUrl}/v1/audio/speech`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      model: 'gpt-4o-mini-tts',
+      input: 'hello from openai model routing',
+      voice: 'alloy',
+    }),
+  })
+  const payload = await response.json()
+
+  assert.equal(response.status, 400)
+  assert.match(payload.error, /openai apiKey is required/)
+})
+
 test('POST /v1/audio/speech streams generated audio bytes', async () => {
   const response = await fetch(`${baseUrl}/v1/audio/speech`, {
     method: 'POST',

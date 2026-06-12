@@ -28,9 +28,13 @@ OpenAI-compatible audio API:
 - `POST /v1/audio/voices`
 - `POST /v1/audio/transcriptions`
 
-The OpenAI-style `model` field maps to a voxout provider id such as `default`,
-`openai`, `cartesia`, `mimo`, `gradium`, or `elevenlabs`.
-`/v1/audio/speech` also accepts `voice_id` for providers that support stored
+`/v1/audio/speech` follows the OpenAI speech request shape: `model` is the TTS
+model, `input` is the text, `voice` is the voice name or id, and
+`response_format`, `speed`, `stream_format`, and `instructions` are optional.
+Use voxout's `provider` extension to choose a backend such as `default`,
+`openai`, `cartesia`, `mimo`, `gradium`, or `elevenlabs`. The legacy
+provider-as-`model` form is still accepted for compatibility.
+The speech endpoint also accepts `voice_id` for providers that support stored
 voice records, currently `openai`, `cartesia`, `elevenlabs`, `gradium`, and
 `mimo`.
 For streaming TTS, pass OpenAI-compatible `stream_format` with `audio` or
@@ -63,7 +67,7 @@ Speech generation:
 curl -X POST http://127.0.0.1:4177/v1/audio/speech \
   -H 'content-type: application/json' \
   --output speech.mp3 \
-  --data '{"model":"default","input":"你好，voxout。","voice":"zh-CN-XiaoyiNeural","response_format":"mp3"}'
+  --data '{"provider":"default","input":"你好，voxout。","voice":"zh-CN-XiaoyiNeural","response_format":"mp3"}'
 ```
 
 Streaming speech:
@@ -72,7 +76,7 @@ Streaming speech:
 curl -N -X POST http://127.0.0.1:4177/v1/audio/speech \
   -H 'content-type: application/json' \
   --output speech.pcm \
-  --data '{"model":"mimo","input":"你好，voxout。","voice":"Chloe","response_format":"pcm","stream_format":"audio"}'
+  --data '{"provider":"mimo","model":"mimo-v2.5-tts","input":"你好，voxout。","voice":"Chloe","response_format":"pcm","stream_format":"audio"}'
 ```
 
 Sound effect generation:

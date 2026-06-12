@@ -113,12 +113,13 @@ export class OpenAiProvider implements TtsProvider, AsrProvider, VoiceCloneProvi
         'content-type': 'application/json',
       },
       body: JSON.stringify(compactObject({
-        model: getConfigString(context, 'ttsModel') ?? DEFAULT_TTS_MODEL,
+        model: request.model ?? getConfigString(context, 'ttsModel') ?? DEFAULT_TTS_MODEL,
         input: text,
         voice: request.segment.voiceId ?? request.voiceId ?? request.segment.voice ?? request.voice ?? getConfigString(context, 'defaultVoice') ?? DEFAULT_VOICE,
         response_format: responseFormat,
         speed: normalizeSpeed(request.rate),
         stream_format: streamFormat,
+        instructions: normalizeInstructions(request.instructions ?? request.segment.stylePrompt ?? request.stylePrompt),
       })),
     })
     return response
@@ -278,6 +279,11 @@ function normalizeSpeed(value: string | undefined): number | undefined {
   if (!value) return undefined
   const parsed = Number(value)
   return Number.isFinite(parsed) ? parsed : undefined
+}
+
+function normalizeInstructions(value: string | undefined): string | undefined {
+  const trimmed = value?.trim()
+  return trimmed || undefined
 }
 
 function parseAudioData(value: string, mimeType: string | undefined): { data: Buffer, mimeType: string, fileName: string } {

@@ -109,7 +109,7 @@ export class ElevenLabsProvider implements TtsProvider, AsrProvider, SoundEffect
 
     const response = await postJsonAudio(url, {
       text,
-      model_id: getConfigString(context, 'ttsModel') ?? DEFAULT_TTS_MODEL,
+      model_id: request.model ?? getConfigString(context, 'ttsModel') ?? DEFAULT_TTS_MODEL,
       language_code: normalizeLanguageCode(request.lang),
     }, apiKey)
     return response
@@ -132,7 +132,7 @@ export class ElevenLabsProvider implements TtsProvider, AsrProvider, SoundEffect
       },
       body: JSON.stringify(compactObject({
         text,
-        model_id: getConfigString(context, 'ttsModel') ?? DEFAULT_TTS_MODEL,
+        model_id: request.model ?? getConfigString(context, 'ttsModel') ?? DEFAULT_TTS_MODEL,
         language_code: normalizeLanguageCode(request.lang),
       })),
     })
