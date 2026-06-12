@@ -196,6 +196,7 @@ test('Mimo provider exposes voice design capability metadata', async () => {
   assert.equal(provider.capabilities.voiceClone, true)
   assert.equal(provider.capabilities.asr, true)
   assert.ok(voices.length > 0)
+  assert.equal(voices.find(voice => voice.id === 'mimo_default').gender, 'Female')
   assert.equal(voices[0].capabilities.voiceDesign, true)
 
   const providers = listProviderDefinitions()

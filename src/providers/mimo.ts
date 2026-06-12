@@ -258,7 +258,7 @@ export class MimoTtsProvider implements TtsProvider, AsrProvider, VoiceDesignPro
 }
 
 const MIMO_PRESET_VOICES: TtsVoice[] = [
-  { id: 'mimo_default', name: 'MiMo Default', locale: 'zh-CN', gender: 'Unknown', provider: 'mimo' },
+  { id: 'mimo_default', name: 'MiMo Default', locale: 'zh-CN', gender: 'Female', provider: 'mimo' },
   { id: '冰糖', name: '冰糖', locale: 'zh-CN', gender: 'Female', provider: 'mimo' },
   { id: '茉莉', name: '茉莉', locale: 'zh-CN', gender: 'Female', provider: 'mimo' },
   { id: '苏打', name: '苏打', locale: 'zh-CN', gender: 'Male', provider: 'mimo' },
