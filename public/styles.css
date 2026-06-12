@@ -48,6 +48,12 @@ button.secondary {
   margin-bottom: 20px;
 }
 
+.top-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
 h1 {
   margin: 0;
   font-size: 30px;
@@ -109,6 +115,24 @@ p {
   padding: 1px 7px;
   color: #5d6778;
   font-size: 12px;
+}
+
+.tabs {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+
+.tab {
+  border-color: #c7ced8;
+  background: white;
+  color: #172033;
+}
+
+.tab.active {
+  border-color: #1f6feb;
+  background: #eef5ff;
+  color: #0f4fb3;
 }
 
 .detail {
@@ -213,6 +237,11 @@ pre {
 
   .topbar,
   .detail-head {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .top-actions {
     align-items: stretch;
     flex-direction: column;
   }

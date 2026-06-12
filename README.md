@@ -66,3 +66,29 @@ npm start
 Set `DATABASE_URL` to enable persisted provider settings. Deployment
 environment variables are limited to service-level settings such as port,
 database URL, audio storage, and global synthesis timeout.
+
+## Static Frontend Deployment
+
+The files under `public/` can be served by voxout itself or copied to the
+existing static-server document tree:
+
+```bash
+rsync -a --delete public/ /home/data/www/tts.rethinkos.com/
+```
+
+For the current `nginx-proxy-manager` + `static-server` deployment, route
+`tts.rethinkos.com` like this:
+
+- `/`, `/app.js`, `/styles.css`, and `/voxout.config.json` -> `static-server:80`
+- `/api`, `/audio`, and `/health` -> `voxout:4177`
+
+When the API is exposed on the same origin, keep `public/voxout.config.json` as:
+
+```json
+{
+  "apiBaseUrl": ""
+}
+```
+
+If the static frontend is hosted on a different origin, set `apiBaseUrl` to the
+public voxout API origin, for example `https://tts.rethinkos.com`.

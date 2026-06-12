@@ -13,7 +13,10 @@
           <h1>voxout</h1>
           <p>Provider configuration and unified invocation console</p>
         </div>
-        <button id="refresh" type="button">Refresh</button>
+        <div class="top-actions">
+          <span id="api-base" class="badge">API: same origin</span>
+          <button id="refresh" type="button">Refresh</button>
+        </div>
       </header>
 
       <section class="layout">
@@ -43,6 +46,11 @@
 
           <div class="invoke">
             <div class="panel-title">Invoke</div>
+            <div class="tabs">
+              <button class="tab active" type="button" data-template="default">Provider</button>
+              <button class="tab" type="button" data-template="tts">TTS</button>
+              <button class="tab" type="button" data-template="asr">ASR</button>
+            </div>
             <textarea id="invoke-input" spellcheck="false"></textarea>
             <div class="actions">
               <button id="invoke" type="button">Run</button>

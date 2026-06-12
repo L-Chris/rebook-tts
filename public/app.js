@@ -1,7 +1,10 @@
 let providers = []
 let selectedProvider = null
+let appConfig = { apiBaseUrl: '' }
+const hiddenProviderIds = new Set(['mock', 'mock-asr'])
 
 const providersEl = document.querySelector('#providers')
+const apiBaseEl = document.querySelector('#api-base')
 const providerNameEl = document.querySelector('#provider-name')
 const capabilitiesEl = document.querySelector('#provider-capabilities')
 const fieldsEl = document.querySelector('#fields')
@@ -14,15 +17,36 @@ const invokeStatusEl = document.querySelector('#invoke-status')
 
 document.querySelector('#refresh').addEventListener('click', loadProviders)
 document.querySelector('#invoke').addEventListener('click', invokeSelectedProvider)
+for (const tab of document.querySelectorAll('.tab')) {
+  tab.addEventListener('click', () => selectInvokeTemplate(tab.dataset.template))
+}
 formEl.addEventListener('submit', saveSelectedProvider)
 
-loadProviders().catch(showFatal)
+boot().catch(showFatal)
+
+async function boot() {
+  await loadConfig()
+  await loadProviders()
+}
+
+async function loadConfig() {
+  try {
+    const response = await fetch('/voxout.config.json', { cache: 'no-store' })
+    if (response.ok) {
+      appConfig = { ...appConfig, ...await response.json() }
+    }
+  } catch {
+    appConfig = { apiBaseUrl: '' }
+  }
+  const apiBaseUrl = normalizeApiBaseUrl(appConfig.apiBaseUrl)
+  apiBaseEl.textContent = apiBaseUrl ? `API: ${apiBaseUrl}` : 'API: same origin'
+}
 
 async function loadProviders() {
-  const response = await fetch('/api/providers')
+  const response = await fetch(apiUrl('/api/providers'))
   const payload = await response.json()
   if (!response.ok) throw new Error(payload.error || 'Failed to load providers')
-  providers = payload.providers || []
+  providers = (payload.providers || []).filter(provider => !hiddenProviderIds.has(provider.id))
   selectedProvider = selectedProvider
     ? providers.find(provider => provider.id === selectedProvider.id) || providers[0]
     : providers[0]
@@ -85,14 +109,34 @@ function renderSelectedProvider() {
   }
 
   const operation = selectedProvider.capabilities?.asr ? 'transcribe' : 'synthesize'
+  setInvokeTemplate(operation === 'transcribe' ? 'asr' : 'tts')
+  invokeOutputEl.textContent = ''
+}
+
+function selectInvokeTemplate(template) {
+  for (const tab of document.querySelectorAll('.tab')) {
+    tab.classList.toggle('active', tab.dataset.template === template)
+  }
+  setInvokeTemplate(template)
+}
+
+function setInvokeTemplate(template) {
+  if (!selectedProvider) return
+  const operation = template === 'asr'
+    ? 'transcribe'
+    : template === 'tts'
+      ? 'synthesize'
+      : selectedProvider.capabilities?.asr ? 'transcribe' : 'synthesize'
+
   invokeInputEl.value = JSON.stringify({
-    provider: selectedProvider.id,
+    provider: operation === 'transcribe'
+      ? selectedProvider.capabilities?.asr ? selectedProvider.id : 'bilibili-asr'
+      : selectedProvider.capabilities?.tts ? selectedProvider.id : 'edge',
     operation,
     input: operation === 'transcribe'
       ? { url: 'https://example.com/audio.m4a', format: 'txt' }
       : { text: '你好，voxout。', voice: selectedProvider.id === 'edge' ? 'zh-CN-XiaoyiNeural' : undefined },
   }, null, 2)
-  invokeOutputEl.textContent = ''
 }
 
 async function saveSelectedProvider(event) {
@@ -110,7 +154,7 @@ async function saveSelectedProvider(event) {
       target[key] = input.type === 'number' ? Number(input.value) : input.value.trim()
     }
   }
-  const response = await fetch(`/api/providers/${encodeURIComponent(selectedProvider.id)}/config`, {
+  const response = await fetch(apiUrl(`/api/providers/${encodeURIComponent(selectedProvider.id)}/config`), {
     method: 'PUT',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ enabled: enabledEl.checked, config, secrets }),
@@ -134,7 +178,7 @@ async function invokeSelectedProvider() {
     invokeStatusEl.textContent = 'Invalid JSON'
     return
   }
-  const response = await fetch('/api/invoke', {
+  const response = await fetch(apiUrl('/api/invoke'), {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify(body),
@@ -146,6 +190,15 @@ async function invokeSelectedProvider() {
 
 function showFatal(error) {
   providersEl.textContent = error.message
+}
+
+function apiUrl(path) {
+  const apiBaseUrl = normalizeApiBaseUrl(appConfig.apiBaseUrl)
+  return `${apiBaseUrl}${path}`
+}
+
+function normalizeApiBaseUrl(value) {
+  return String(value || '').replace(/\/+$/, '')
 }
 
 function escapeHtml(value) {

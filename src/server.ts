@@ -44,20 +44,22 @@ const server = createServer(async (req, res) => {
 
   try {
     const url = new URL(req.url ?? '/', `http://${req.headers.host ?? 'localhost'}`)
+    const isHead = req.method === 'HEAD'
+    const isGetLike = req.method === 'GET' || isHead
 
-    if (req.method === 'GET' && url.pathname === '/health') {
+    if (isGetLike && url.pathname === '/health') {
       return sendJson(res, {
         ok: true,
         database: configStore.isDatabaseEnabled() ? 'enabled' : 'disabled',
-      })
+      }, 200, isHead)
     }
 
-    if (req.method === 'GET' && url.pathname === '/api/providers') {
+    if (isGetLike && url.pathname === '/api/providers') {
       const configMap = await getConfigMap()
       return sendJson(res, {
         providers: listProviderDefinitions(configMap),
         database: configStore.isDatabaseEnabled(),
-      })
+      }, 200, isHead)
     }
 
     const configMatch = /^\/api\/providers\/([^/]+)\/config$/.exec(url.pathname)
@@ -76,18 +78,18 @@ const server = createServer(async (req, res) => {
     }
 
     const audioMatch = /^\/audio\/([^/]+)$/.exec(url.pathname)
-    if (req.method === 'GET' && audioMatch) {
-      return sendAudio(res, audioMatch[1] ?? '')
+    if (isGetLike && audioMatch) {
+      return sendAudio(res, audioMatch[1] ?? '', isHead)
     }
 
-    if (req.method === 'GET' && await sendPublicFile(res, publicDir, url.pathname)) {
+    if (isGetLike && await sendPublicFile(res, publicDir, url.pathname, isHead)) {
       return
     }
 
-    return sendJson(res, { error: 'Not found' }, 404)
+    return sendJson(res, { error: 'Not found' }, 404, isHead)
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
-    return sendJson(res, { error: message }, 400)
+    return sendJson(res, { error: message }, 400, req.method === 'HEAD')
   }
 })
 
@@ -205,32 +207,42 @@ function normalizeTranscribeInput(input: unknown): TranscribeRequest {
 function setCorsHeaders(res: ServerResponse): void {
   res.setHeader('Access-Control-Allow-Origin', '*')
   res.setHeader('Access-Control-Allow-Headers', 'content-type')
-  res.setHeader('Access-Control-Allow-Methods', 'GET,POST,PUT,OPTIONS')
+  res.setHeader('Access-Control-Allow-Methods', 'GET,HEAD,POST,PUT,OPTIONS')
 }
 
-function sendJson(res: ServerResponse, value: unknown, status = 200): void {
-  res.writeHead(status, { 'content-type': 'application/json; charset=utf-8' })
-  res.end(JSON.stringify(value))
+function sendJson(res: ServerResponse, value: unknown, status = 200, headOnly = false): void {
+  const body = JSON.stringify(value)
+  res.writeHead(status, {
+    'content-type': 'application/json; charset=utf-8',
+    'content-length': String(Buffer.byteLength(body)),
+  })
+  res.end(headOnly ? undefined : body)
 }
 
-function sendAudio(res: ServerResponse, fileName: string): void {
+async function sendAudio(res: ServerResponse, fileName: string, headOnly = false): Promise<void> {
   if (!/^[a-f0-9]{64}\.(?:wav|mp3)$/.test(fileName)) {
-    sendJson(res, { error: 'Invalid audio file name' }, 400)
+    sendJson(res, { error: 'Invalid audio file name' }, 400, headOnly)
     return
   }
   const filePath = normalize(join(audioDir, fileName))
   if (!filePath.startsWith(normalize(audioDir))) {
-    sendJson(res, { error: 'Invalid audio path' }, 400)
+    sendJson(res, { error: 'Invalid audio path' }, 400, headOnly)
     return
   }
-  stat(filePath).catch(() => null).then(fileStat => {
-    if (!fileStat?.isFile()) {
-      sendJson(res, { error: 'Audio not found' }, 404)
-      return
-    }
-    res.writeHead(200, { 'content-type': fileName.endsWith('.mp3') ? 'audio/mpeg' : 'audio/wav' })
-    createReadStream(filePath).pipe(res)
+  const fileStat = await stat(filePath).catch(() => null)
+  if (!fileStat?.isFile()) {
+    sendJson(res, { error: 'Audio not found' }, 404, headOnly)
+    return
+  }
+  res.writeHead(200, {
+    'content-type': fileName.endsWith('.mp3') ? 'audio/mpeg' : 'audio/wav',
+    'content-length': String(fileStat.size),
   })
+  if (headOnly) {
+    res.end()
+    return
+  }
+  createReadStream(filePath).pipe(res)
 }
 
 async function readJson<T>(req: IncomingMessage): Promise<T> {
