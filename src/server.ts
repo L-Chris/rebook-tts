@@ -4,14 +4,12 @@ import { createServer, type IncomingMessage, type ServerResponse } from 'node:ht
 import { randomUUID } from 'node:crypto'
 import { join, normalize } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { AudioCache } from './cache.js'
 import { ProviderConfigStore } from './config-store.js'
 import { loadDotEnv } from './env.js'
-import { getAsrProvider, getTtsProvider, listProviderDefinitions } from './providers/registry.js'
+import { getAsrProvider, getTtsProvider, listAsrProviders, listProviderDefinitions, listTtsProviders } from './providers/registry.js'
 import { sendPublicFile } from './public.js'
 import { getSynthesisTimeoutMs, withTimeout } from './timeout.js'
 import type {
-  InvokeRequest,
   ProviderConfigInput,
   ProviderRuntimeConfig,
   SynthesizeRequest,
@@ -29,7 +27,6 @@ await loadDotEnv([
 const port = Number(process.env.PORT ?? 4177)
 const audioDir = process.env.TTS_AUDIO_DIR ?? join(rootDir, 'audio')
 const publicDir = join(rootDir, 'public')
-const cache = new AudioCache(audioDir)
 const configStore = new ProviderConfigStore()
 
 await mkdir(audioDir, { recursive: true })
@@ -62,6 +59,10 @@ const server = createServer(async (req, res) => {
       }, 200, isHead)
     }
 
+    if (isGetLike && url.pathname === '/v1/models') {
+      return sendJson(res, { object: 'list', data: listOpenAiModels() }, 200, isHead)
+    }
+
     const configMatch = /^\/api\/providers\/([^/]+)\/config$/.exec(url.pathname)
     if (req.method === 'PUT' && configMatch) {
       const providerId = decodeURIComponent(configMatch[1] ?? '')
@@ -71,10 +72,12 @@ const server = createServer(async (req, res) => {
       return sendJson(res, { provider: record })
     }
 
-    if (req.method === 'POST' && url.pathname === '/api/invoke') {
-      const body = await readJson<InvokeRequest>(req)
-      const result = await invokeProvider(body)
-      return sendJson(res, result)
+    if (req.method === 'POST' && url.pathname === '/v1/audio/speech') {
+      return createOpenAiSpeech(req, res)
+    }
+
+    if (req.method === 'POST' && url.pathname === '/v1/audio/transcriptions') {
+      return createOpenAiTranscription(req, res)
     }
 
     const audioMatch = /^\/audio\/([^/]+)$/.exec(url.pathname)
@@ -97,39 +100,99 @@ server.listen(port, () => {
   console.log(`voxout listening on http://127.0.0.1:${port}`)
 })
 
-async function invokeProvider(request: InvokeRequest): Promise<unknown> {
-  const providerId = request.provider?.trim()
-  if (!providerId) throw new Error('provider is required')
-
-  if (request.operation === 'transcribe' || request.capability === 'asr') {
-    const provider = getAsrProvider(providerId)
-    const context = await getRuntimeConfig(provider.id)
-    ensureEnabled(provider.id, context)
-    return {
-      provider: provider.id,
-      operation: 'transcribe',
-      result: await provider.transcribe(normalizeTranscribeInput(request.input), context),
-    }
-  }
+async function createOpenAiSpeech(req: IncomingMessage, res: ServerResponse): Promise<void> {
+  const body = await readJson<Record<string, unknown>>(req)
+  const providerId = getOpenAiModelProvider(body.model, body.provider)
+  const input = typeof body.input === 'string' ? body.input : ''
+  if (!input.trim()) throw new Error('input is required')
 
   const provider = getTtsProvider(providerId)
   const context = await getRuntimeConfig(provider.id)
   ensureEnabled(provider.id, context)
-  const synthesizeRequest = normalizeSynthesizeInput(provider.id, request.input)
+  const responseFormat = typeof body.response_format === 'string' ? body.response_format : undefined
+  const request = normalizeSynthesizeInput(provider.id, {
+    text: input,
+    voice: typeof body.voice === 'string' ? body.voice : undefined,
+    outputFormat: responseFormat,
+    speed: typeof body.speed === 'number' ? body.speed : undefined,
+  })
   const timeoutMs = getSynthesisTimeoutMs()
   const result = await withTimeout(
-    cache.getOrCreate(
-      synthesizeRequest,
-      () => provider.synthesize(synthesizeRequest, context),
-    ),
+    provider.synthesize(request, context),
     timeoutMs,
-    `TTS synthesis timed out after ${timeoutMs}ms for segment ${synthesizeRequest.segment.id}`,
+    `Speech generation timed out after ${timeoutMs}ms for provider ${provider.id}`,
   )
-  return {
-    provider: provider.id,
-    operation: 'synthesize',
-    result,
+  sendBinary(res, result.audio, normalizeSpeechMimeType(responseFormat, result.mimeType))
+}
+
+async function createOpenAiTranscription(req: IncomingMessage, res: ServerResponse): Promise<void> {
+  const form = await readMultipartForm(req)
+  const providerId = getOpenAiModelProvider(form.fields.model, form.fields.provider)
+  const provider = getAsrProvider(providerId)
+  const context = await getRuntimeConfig(provider.id)
+  ensureEnabled(provider.id, context)
+
+  const file = form.files.file
+  const responseFormat = normalizeTranscriptionResponseFormat(form.fields.response_format)
+  const request: TranscribeRequest = {
+    url: form.fields.url,
+    bvid: form.fields.bvid,
+    audioData: form.fields.audioData,
+    mimeType: form.fields.mimeType,
+    language: form.fields.language,
+    format: responseFormat === 'srt' ? 'srt' : responseFormat === 'verbose_json' ? 'raw' : 'txt',
   }
+  if (file) {
+    request.audioData = `data:${normalizeMimeType(file.contentType)};base64,${file.data.toString('base64')}`
+    request.mimeType = normalizeMimeType(file.contentType)
+  }
+  if (!request.url && !request.bvid && !request.audioData) {
+    throw new Error('file, url, bvid, or audioData is required')
+  }
+
+  const result = await provider.transcribe(request, context)
+  const text = result.text ?? ''
+  if (responseFormat === 'text' || responseFormat === 'srt') {
+    return sendText(res, text, 'text/plain; charset=utf-8')
+  }
+  if (responseFormat === 'verbose_json') {
+    return sendJson(res, {
+      text,
+      segments: result.segments,
+      raw: result.raw,
+    })
+  }
+  return sendJson(res, { text })
+}
+
+function listOpenAiModels(): Array<{
+  id: string
+  object: 'model'
+  created: number
+  owned_by: string
+  capabilities: Record<string, boolean>
+}> {
+  const models = new Map<string, {
+    id: string
+    object: 'model'
+    created: number
+    owned_by: string
+    capabilities: Record<string, boolean>
+  }>()
+  for (const provider of [...listTtsProviders(), ...listAsrProviders()]) {
+    const existing = models.get(provider.id)
+    models.set(provider.id, {
+      id: provider.id,
+      object: 'model',
+      created: 0,
+      owned_by: 'voxout',
+      capabilities: {
+        ...(existing?.capabilities ?? {}),
+        ...(provider.capabilities ?? {}),
+      },
+    })
+  }
+  return [...models.values()]
 }
 
 async function getConfigMap(): Promise<Map<string, ProviderRuntimeConfig>> {
@@ -175,7 +238,7 @@ function normalizeSynthesizeInput(providerId: string, input: unknown): Synthesiz
     voice: typeof value.voice === 'string' ? value.voice : undefined,
     lang: typeof value.lang === 'string' ? value.lang : undefined,
     outputFormat: typeof value.outputFormat === 'string' ? value.outputFormat : undefined,
-    rate: typeof value.rate === 'string' ? value.rate : undefined,
+    rate: typeof value.rate === 'string' ? value.rate : typeof value.speed === 'number' ? String(value.speed) : undefined,
     pitch: typeof value.pitch === 'string' ? value.pitch : undefined,
     volume: typeof value.volume === 'string' ? value.volume : undefined,
     voicePrompt: typeof value.voicePrompt === 'string' ? value.voicePrompt : undefined,
@@ -193,22 +256,6 @@ function normalizeSynthesizeInput(providerId: string, input: unknown): Synthesiz
   }
 }
 
-function normalizeTranscribeInput(input: unknown): TranscribeRequest {
-  const value = input && typeof input === 'object' ? input as Record<string, unknown> : {}
-  const request: TranscribeRequest = {
-    url: typeof value.url === 'string' ? value.url : undefined,
-    bvid: typeof value.bvid === 'string' ? value.bvid : undefined,
-    audioData: typeof value.audioData === 'string' ? value.audioData : undefined,
-    mimeType: typeof value.mimeType === 'string' ? value.mimeType : undefined,
-    language: typeof value.language === 'string' ? value.language : undefined,
-    format: value.format === 'srt' || value.format === 'raw' ? value.format : 'txt',
-  }
-  if (!request.url && !request.bvid && !request.audioData) {
-    throw new Error('input.url, input.bvid, or input.audioData is required for transcribe')
-  }
-  return request
-}
-
 function setCorsHeaders(res: ServerResponse): void {
   res.setHeader('Access-Control-Allow-Origin', '*')
   res.setHeader('Access-Control-Allow-Headers', 'content-type')
@@ -222,6 +269,22 @@ function sendJson(res: ServerResponse, value: unknown, status = 200, headOnly = 
     'content-length': String(Buffer.byteLength(body)),
   })
   res.end(headOnly ? undefined : body)
+}
+
+function sendText(res: ServerResponse, value: string, contentType: string): void {
+  res.writeHead(200, {
+    'content-type': contentType,
+    'content-length': String(Buffer.byteLength(value)),
+  })
+  res.end(value)
+}
+
+function sendBinary(res: ServerResponse, value: Buffer, contentType: string): void {
+  res.writeHead(200, {
+    'content-type': contentType,
+    'content-length': String(value.length),
+  })
+  res.end(value)
 }
 
 async function sendAudio(res: ServerResponse, fileName: string, headOnly = false): Promise<void> {
@@ -255,4 +318,75 @@ async function readJson<T>(req: IncomingMessage): Promise<T> {
   for await (const chunk of req) chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk))
   const text = Buffer.concat(chunks).toString('utf8')
   return JSON.parse(text || '{}') as T
+}
+
+async function readMultipartForm(req: IncomingMessage): Promise<{
+  fields: Record<string, string>
+  files: Record<string, { fileName: string, contentType: string, data: Buffer }>
+}> {
+  const contentType = req.headers['content-type'] ?? ''
+  const boundary = /boundary=(?:"([^"]+)"|([^;]+))/i.exec(contentType)?.[1]
+    ?? /boundary=(?:"([^"]+)"|([^;]+))/i.exec(contentType)?.[2]
+  if (!boundary) throw new Error('multipart/form-data boundary is required')
+  const body = await readRequestBuffer(req)
+  const boundaryBuffer = Buffer.from(`--${boundary}`)
+  const fields: Record<string, string> = {}
+  const files: Record<string, { fileName: string, contentType: string, data: Buffer }> = {}
+  let cursor = body.indexOf(boundaryBuffer)
+
+  while (cursor >= 0) {
+    cursor += boundaryBuffer.length
+    if (body[cursor] === 45 && body[cursor + 1] === 45) break
+    if (body[cursor] === 13 && body[cursor + 1] === 10) cursor += 2
+    const headerEnd = body.indexOf(Buffer.from('\r\n\r\n'), cursor)
+    if (headerEnd < 0) break
+    const headers = body.slice(cursor, headerEnd).toString('utf8')
+    const dataStart = headerEnd + 4
+    const nextBoundary = body.indexOf(Buffer.from(`\r\n--${boundary}`), dataStart)
+    if (nextBoundary < 0) break
+    const data = body.slice(dataStart, nextBoundary)
+    const disposition = /^content-disposition:\s*([^\r\n]+)/im.exec(headers)?.[1] ?? ''
+    const name = /name="([^"]+)"/.exec(disposition)?.[1]
+    const fileName = /filename="([^"]*)"/.exec(disposition)?.[1]
+    const partContentType = /^content-type:\s*([^\r\n]+)/im.exec(headers)?.[1]?.trim() ?? 'application/octet-stream'
+    if (name && fileName != null) {
+      files[name] = { fileName, contentType: partContentType, data }
+    } else if (name) {
+      fields[name] = data.toString('utf8')
+    }
+    cursor = body.indexOf(boundaryBuffer, nextBoundary + 2)
+  }
+  return { fields, files }
+}
+
+async function readRequestBuffer(req: IncomingMessage): Promise<Buffer> {
+  const chunks: Buffer[] = []
+  for await (const chunk of req) chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk))
+  return Buffer.concat(chunks)
+}
+
+function getOpenAiModelProvider(model: unknown, provider: unknown): string {
+  const providerId = typeof provider === 'string' && provider.trim()
+    ? provider.trim()
+    : typeof model === 'string' && model.trim()
+      ? model.trim()
+      : ''
+  if (!providerId) throw new Error('model is required')
+  return providerId
+}
+
+function normalizeSpeechMimeType(responseFormat: string | undefined, providerMimeType: string): string {
+  const format = responseFormat?.toLowerCase()
+  if (format === 'mp3') return 'audio/mpeg'
+  if (format === 'wav' || format === 'pcm') return 'audio/wav'
+  return providerMimeType
+}
+
+function normalizeTranscriptionResponseFormat(value: string | undefined): 'json' | 'text' | 'srt' | 'verbose_json' {
+  if (value === 'text' || value === 'srt' || value === 'verbose_json') return value
+  return 'json'
+}
+
+function normalizeMimeType(value: string | undefined): string {
+  return value?.split(';')[0]?.trim() || 'application/octet-stream'
 }

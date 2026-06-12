@@ -10,6 +10,7 @@
   }
 
   button,
+  select,
   input,
   textarea {
     font: inherit;
@@ -48,5 +49,9 @@
 
   .tab-active {
     @apply border-blue-600 bg-blue-50 text-blue-700;
+  }
+
+  .link {
+    @apply text-sm font-medium text-blue-700 underline-offset-2 hover:underline;
   }
 }

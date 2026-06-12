@@ -55,7 +55,7 @@ test('HEAD returns headers without a body for public files', async () => {
 })
 
 test('HEAD returns headers without a body for JSON endpoints', async () => {
-  for (const pathname of ['/health', '/api/providers']) {
+  for (const pathname of ['/health', '/api/providers', '/v1/models']) {
     const response = await fetch(`${baseUrl}${pathname}`, { method: 'HEAD' })
 
     assert.equal(response.status, 200)

@@ -2,10 +2,10 @@
 
 Provider gateway for speech synthesis, sound effects, and ASR.
 
-voxout exposes one provider configuration surface and one invocation API. It
-stores provider settings in MySQL through Prisma; provider keys, base URLs, and
-model choices should be managed from the web console or inserted into the
-`ProviderConfig` table.
+voxout exposes OpenAI-compatible audio endpoints plus a provider configuration
+surface. It stores provider settings in MySQL through Prisma; provider keys,
+base URLs, and model choices should be managed from the web console or inserted
+into the `ProviderConfig` table.
 
 ## Providers
 
@@ -18,39 +18,53 @@ model choices should be managed from the web console or inserted into the
 
 ## API
 
+OpenAI-compatible audio API:
+
+- `GET /v1/models`
+- `POST /v1/audio/speech`
+- `POST /v1/audio/transcriptions`
+
+The OpenAI-style `model` field maps to a voxout provider id such as `edge`,
+`mimo`, `elevenlabs`, or `bilibili-asr`.
+
+Provider management API:
+
 - `GET /health`
 - `GET /api/providers`
 - `PUT /api/providers/:providerId/config`
-- `POST /api/invoke`
 - `GET /audio/:file`
 
 The old `/v1/tts/*` API has been removed.
 
 ## Invoke
 
-TTS and sound effects:
+Speech generation:
 
 ```bash
-curl -X POST http://127.0.0.1:4177/api/invoke \
+curl -X POST http://127.0.0.1:4177/v1/audio/speech \
   -H 'content-type: application/json' \
-  --data '{"provider":"edge","operation":"synthesize","input":{"text":"你好，voxout。","voice":"zh-CN-XiaoyiNeural"}}'
+  --output speech.mp3 \
+  --data '{"model":"edge","input":"你好，voxout。","voice":"zh-CN-XiaoyiNeural","response_format":"mp3"}'
 ```
 
-ASR:
+Transcription from a local file:
 
 ```bash
-curl -X POST http://127.0.0.1:4177/api/invoke \
-  -H 'content-type: application/json' \
-  --data '{"provider":"bilibili-asr","operation":"transcribe","input":{"url":"https://example.com/audio.m4a","format":"txt"}}'
+curl -X POST http://127.0.0.1:4177/v1/audio/transcriptions \
+  -F model=mimo \
+  -F response_format=json \
+  -F language=auto \
+  -F file=@sample.wav
 ```
 
-MiMo ASR accepts either `input.url` or inline audio data. Inline data can be a
-full data URL or a base64 payload with `mimeType`:
+Transcription from a URL is supported as a voxout extension for URL-based
+providers:
 
 ```bash
-curl -X POST http://127.0.0.1:4177/api/invoke \
-  -H 'content-type: application/json' \
-  --data '{"provider":"mimo","operation":"transcribe","input":{"audioData":"data:audio/wav;base64,...","language":"auto","format":"txt"}}'
+curl -X POST http://127.0.0.1:4177/v1/audio/transcriptions \
+  -F model=bilibili-asr \
+  -F response_format=text \
+  -F url=https://example.com/audio.m4a
 ```
 
 ## Provider Config

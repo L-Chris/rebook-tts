@@ -6,7 +6,7 @@ export class MockAsrProvider implements AsrProvider {
   readonly capabilities = { asr: true }
 
   async transcribe(request: TranscribeRequest) {
-    const target = request.bvid ? `video ${request.bvid}` : request.url
+    const target = request.bvid ? `video ${request.bvid}` : request.url ?? (request.audioData ? 'inline audio' : 'unknown audio')
     return {
       provider: this.id,
       format: request.format ?? 'txt',

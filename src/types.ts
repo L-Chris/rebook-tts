@@ -152,10 +152,3 @@ export interface ProviderConfigRecord extends ProviderRuntimeConfig {
   createdAt?: string
   updatedAt?: string
 }
-
-export interface InvokeRequest {
-  provider?: string
-  operation?: 'synthesize' | 'transcribe'
-  capability?: 'tts' | 'asr'
-  input?: unknown
-}

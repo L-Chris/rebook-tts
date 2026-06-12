@@ -9,11 +9,13 @@ function App() {
   const [providers, setProviders] = useState([])
   const [selectedProviderId, setSelectedProviderId] = useState('')
   const [saveStatus, setSaveStatus] = useState('')
-  const [invokeStatus, setInvokeStatus] = useState('')
-  const [invokeOutput, setInvokeOutput] = useState('')
-  const [invokeTemplate, setInvokeTemplate] = useState('tts')
-  const [invokeInput, setInvokeInput] = useState('')
+  const [testStatus, setTestStatus] = useState('')
+  const [testMode, setTestMode] = useState('tts')
+  const [testResult, setTestResult] = useState(null)
   const [formValues, setFormValues] = useState({})
+  const [speechForm, setSpeechForm] = useState(defaultSpeechForm())
+  const [transcriptionForm, setTranscriptionForm] = useState(defaultTranscriptionForm())
+  const [transcriptionFile, setTranscriptionFile] = useState(null)
 
   const apiBaseUrl = normalizeApiBaseUrl(appConfig.apiBaseUrl)
   const selectedProvider = providers.find(provider => provider.id === selectedProviderId) ?? providers[0]
@@ -25,23 +27,19 @@ function App() {
   useEffect(() => {
     loadProviders().catch(error => {
       setProviders([])
-      setInvokeOutput(error.message)
+      setTestResult({ kind: 'error', message: error.message })
     })
   }, [apiBaseUrl])
 
   useEffect(() => {
     if (!selectedProvider) return
     setFormValues(getProviderFormValues(selectedProvider))
-    const template = getDefaultInvokeTemplate(selectedProvider)
-    setInvokeTemplate(template)
-    setInvokeInput(JSON.stringify(createInvokePayload(selectedProvider, template), null, 2))
-    setInvokeOutput('')
+    setTestMode(getDefaultTestMode(selectedProvider))
+    setSpeechForm(defaultSpeechForm(selectedProvider))
+    setTranscriptionForm(defaultTranscriptionForm())
+    setTranscriptionFile(null)
+    clearTestResult()
   }, [selectedProvider?.id])
-
-  useEffect(() => {
-    if (!selectedProvider || !supportsInvokeTemplate(selectedProvider, invokeTemplate)) return
-    setInvokeInput(JSON.stringify(createInvokePayload(selectedProvider, invokeTemplate), null, 2))
-  }, [invokeTemplate, selectedProvider?.id])
 
   async function loadProviders() {
     const response = await fetch(apiUrl('/api/providers', apiBaseUrl))
@@ -55,9 +53,18 @@ function App() {
     })
   }
 
-  function selectInvokeTemplate(template) {
-    if (!selectedProvider || !supportsInvokeTemplate(selectedProvider, template)) return
-    setInvokeTemplate(template)
+  function selectTestMode(mode) {
+    if (!selectedProvider || !supportsTestMode(selectedProvider, mode)) return
+    setTestMode(mode)
+    clearTestResult()
+  }
+
+  function clearTestResult() {
+    setTestStatus('')
+    setTestResult(current => {
+      if (current?.objectUrl) URL.revokeObjectURL(current.objectUrl)
+      return null
+    })
   }
 
   async function saveSelectedProvider(event) {
@@ -91,24 +98,80 @@ function App() {
     await loadProviders()
   }
 
-  async function invokeSelectedProvider() {
-    setInvokeStatus('Running...')
-    setInvokeOutput('')
-    let body
+  async function runTest(event) {
+    event.preventDefault()
+    if (!selectedProvider) return
+    clearTestResult()
+    setTestStatus('Running...')
+
     try {
-      body = JSON.parse(invokeInput)
-    } catch {
-      setInvokeStatus('Invalid JSON')
-      return
+      if (testMode === 'asr') {
+        await runTranscriptionTest()
+      } else {
+        await runSpeechTest()
+      }
+      setTestStatus('Done')
+    } catch (error) {
+      setTestStatus('Failed')
+      setTestResult({ kind: 'error', message: error instanceof Error ? error.message : String(error) })
     }
-    const response = await fetch(apiUrl('/api/invoke', apiBaseUrl), {
+  }
+
+  async function runSpeechTest() {
+    const response = await fetch(apiUrl('/v1/audio/speech', apiBaseUrl), {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify(body),
+      body: JSON.stringify({
+        model: selectedProvider.id,
+        input: speechForm.input,
+        voice: speechForm.voice || undefined,
+        response_format: speechForm.responseFormat,
+        speed: Number(speechForm.speed) || undefined,
+      }),
     })
-    const payload = await response.json()
-    setInvokeStatus(response.ok ? 'Done' : 'Failed')
-    setInvokeOutput(JSON.stringify(payload, null, 2))
+    if (!response.ok) throw new Error(await readError(response))
+    const blob = await response.blob()
+    const objectUrl = URL.createObjectURL(blob)
+    setTestResult({
+      kind: 'audio',
+      objectUrl,
+      mimeType: response.headers.get('content-type') || blob.type,
+      size: blob.size,
+      endpoint: 'POST /v1/audio/speech',
+    })
+  }
+
+  async function runTranscriptionTest() {
+    const form = new FormData()
+    form.set('model', selectedProvider.id)
+    form.set('response_format', transcriptionForm.responseFormat)
+    if (transcriptionForm.language.trim()) form.set('language', transcriptionForm.language.trim())
+    if (transcriptionFile) {
+      form.set('file', transcriptionFile)
+    } else if (transcriptionForm.url.trim()) {
+      form.set('url', transcriptionForm.url.trim())
+    } else if (transcriptionForm.audioData.trim()) {
+      form.set('audioData', transcriptionForm.audioData.trim())
+      if (transcriptionForm.mimeType.trim()) form.set('mimeType', transcriptionForm.mimeType.trim())
+    } else {
+      throw new Error('Choose an audio file, URL, or inline audio data.')
+    }
+
+    const response = await fetch(apiUrl('/v1/audio/transcriptions', apiBaseUrl), {
+      method: 'POST',
+      body: form,
+    })
+    if (!response.ok) throw new Error(await readError(response))
+    const contentType = response.headers.get('content-type') || ''
+    const body = contentType.includes('application/json')
+      ? JSON.stringify(await response.json(), null, 2)
+      : await response.text()
+    setTestResult({
+      kind: contentType.includes('application/json') ? 'json' : 'text',
+      content: body,
+      mimeType: contentType,
+      endpoint: 'POST /v1/audio/transcriptions',
+    })
   }
 
   const capabilityText = useMemo(() => {
@@ -125,7 +188,7 @@ function App() {
         <header className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <h1 className="text-3xl font-bold tracking-normal">voxout</h1>
-            <p className="mt-1 text-slate-500">Provider configuration and unified invocation console</p>
+            <p className="mt-1 text-slate-500">Provider configuration and OpenAI-compatible audio console</p>
           </div>
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
             <span className="rounded-full border border-slate-300 px-3 py-1 text-sm text-slate-500">
@@ -192,31 +255,42 @@ function App() {
                 </form>
 
                 <div className="mt-8 border-t border-slate-200 pt-5">
-                  <h2 className="mb-3 text-lg font-bold">Invoke</h2>
-                  <div className="mb-3 flex gap-2">
-                    {['provider', 'tts', 'asr'].map(template => (
+                  <div className="mb-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                    <h2 className="text-lg font-bold">Test API</h2>
+                    <span className="text-sm text-slate-500">OpenAI-compatible `/v1/audio/*` endpoints</span>
+                  </div>
+                  <div className="mb-4 flex gap-2">
+                    {['tts', 'asr'].map(mode => (
                       <button
-                        className={`tab ${invokeTemplate === template ? 'tab-active' : ''}`}
-                        disabled={!supportsInvokeTemplate(selectedProvider, template)}
-                        key={template}
+                        className={`tab ${testMode === mode ? 'tab-active' : ''}`}
+                        disabled={!supportsTestMode(selectedProvider, mode)}
+                        key={mode}
                         type="button"
-                        onClick={() => selectInvokeTemplate(template)}
+                        onClick={() => selectTestMode(mode)}
                       >
-                        {template === 'tts' ? 'TTS' : template === 'asr' ? 'ASR' : 'Provider'}
+                        {mode === 'tts' ? 'Speech' : 'Transcription'}
                       </button>
                     ))}
                   </div>
-                  <textarea
-                    className="textarea min-h-48 font-mono text-sm"
-                    spellCheck="false"
-                    value={invokeInput}
-                    onChange={event => setInvokeInput(event.target.value)}
-                  />
-                  <div className="mt-4 flex items-center gap-3">
-                    <button className="btn-primary" type="button" onClick={invokeSelectedProvider}>Run</button>
-                    <span className="text-slate-500">{invokeStatus}</span>
-                  </div>
-                  <pre className="mt-4 max-h-96 min-h-36 overflow-auto rounded-md bg-slate-950 p-3 text-sm text-slate-100">{invokeOutput}</pre>
+
+                  <form className="grid gap-4" onSubmit={runTest}>
+                    {testMode === 'asr' ? (
+                      <TranscriptionTestForm
+                        file={transcriptionFile}
+                        form={transcriptionForm}
+                        onFileChange={setTranscriptionFile}
+                        onFormChange={setTranscriptionForm}
+                      />
+                    ) : (
+                      <SpeechTestForm form={speechForm} onFormChange={setSpeechForm} provider={selectedProvider} />
+                    )}
+                    <div className="flex items-center gap-3">
+                      <button className="btn-primary" type="submit">Run test</button>
+                      <span className="text-slate-500">{testStatus}</span>
+                    </div>
+                  </form>
+
+                  <ResultPreview result={testResult} />
                 </div>
               </>
             ) : (
@@ -248,10 +322,156 @@ function FieldInput({ field, value, onChange }) {
   )
 }
 
+function SpeechTestForm({ form, onFormChange, provider }) {
+  return (
+    <div className="grid gap-3 md:grid-cols-2">
+      <label className="grid gap-1.5 text-sm font-semibold md:col-span-2">
+        Input text
+        <textarea
+          className="textarea min-h-28"
+          value={form.input}
+          onChange={event => onFormChange({ ...form, input: event.target.value })}
+        />
+      </label>
+      <label className="grid gap-1.5 text-sm font-semibold">
+        Voice
+        <input
+          className="input"
+          placeholder={provider.id === 'edge' ? 'zh-CN-XiaoyiNeural' : 'optional'}
+          value={form.voice}
+          onChange={event => onFormChange({ ...form, voice: event.target.value })}
+        />
+      </label>
+      <label className="grid gap-1.5 text-sm font-semibold">
+        Response format
+        <select
+          className="input"
+          value={form.responseFormat}
+          onChange={event => onFormChange({ ...form, responseFormat: event.target.value })}
+        >
+          <option value="wav">wav</option>
+          <option value="mp3">mp3</option>
+        </select>
+      </label>
+      <label className="grid gap-1.5 text-sm font-semibold">
+        Speed
+        <input
+          className="input"
+          min="0.25"
+          max="4"
+          step="0.05"
+          type="number"
+          value={form.speed}
+          onChange={event => onFormChange({ ...form, speed: event.target.value })}
+        />
+      </label>
+    </div>
+  )
+}
+
+function TranscriptionTestForm({ file, form, onFileChange, onFormChange }) {
+  return (
+    <div className="grid gap-3 md:grid-cols-2">
+      <label className="grid gap-1.5 text-sm font-semibold md:col-span-2">
+        Audio file
+        <input
+          className="input"
+          type="file"
+          accept="audio/*,video/mp4,video/webm"
+          onChange={event => onFileChange(event.target.files?.[0] ?? null)}
+        />
+        {file ? <small className="font-normal text-slate-500">{file.name}</small> : null}
+      </label>
+      <label className="grid gap-1.5 text-sm font-semibold md:col-span-2">
+        Audio URL
+        <input
+          className="input"
+          placeholder="https://example.com/audio.m4a"
+          value={form.url}
+          onChange={event => onFormChange({ ...form, url: event.target.value })}
+        />
+      </label>
+      <label className="grid gap-1.5 text-sm font-semibold md:col-span-2">
+        Inline audio data
+        <textarea
+          className="textarea min-h-24 font-mono text-xs"
+          placeholder="data:audio/wav;base64,..."
+          value={form.audioData}
+          onChange={event => onFormChange({ ...form, audioData: event.target.value })}
+        />
+      </label>
+      <label className="grid gap-1.5 text-sm font-semibold">
+        Language
+        <input
+          className="input"
+          placeholder="auto"
+          value={form.language}
+          onChange={event => onFormChange({ ...form, language: event.target.value })}
+        />
+      </label>
+      <label className="grid gap-1.5 text-sm font-semibold">
+        Response format
+        <select
+          className="input"
+          value={form.responseFormat}
+          onChange={event => onFormChange({ ...form, responseFormat: event.target.value })}
+        >
+          <option value="json">json</option>
+          <option value="text">text</option>
+          <option value="verbose_json">verbose_json</option>
+          <option value="srt">srt</option>
+        </select>
+      </label>
+      <label className="grid gap-1.5 text-sm font-semibold">
+        MIME type
+        <input
+          className="input"
+          placeholder="audio/wav"
+          value={form.mimeType}
+          onChange={event => onFormChange({ ...form, mimeType: event.target.value })}
+        />
+      </label>
+    </div>
+  )
+}
+
+function ResultPreview({ result }) {
+  if (!result) return null
+  if (result.kind === 'error') {
+    return <div className="mt-4 rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700">{result.message}</div>
+  }
+  if (result.kind === 'audio') {
+    return (
+      <div className="mt-4 grid gap-3 rounded-md border border-slate-200 bg-slate-50 p-3">
+        <div className="text-sm text-slate-500">{result.endpoint} · {result.mimeType} · {formatBytes(result.size)}</div>
+        <audio className="w-full" controls src={result.objectUrl} />
+        <div>
+          <a className="link" href={result.objectUrl} rel="noreferrer" target="_blank">Open audio preview</a>
+        </div>
+      </div>
+    )
+  }
+  return (
+    <div className="mt-4 grid gap-3 rounded-md border border-slate-200 bg-slate-50 p-3">
+      <div className="text-sm text-slate-500">{result.endpoint} · {result.mimeType}</div>
+      <pre className="max-h-96 overflow-auto whitespace-pre-wrap rounded-md bg-slate-950 p-3 text-sm text-slate-100">{result.content}</pre>
+    </div>
+  )
+}
+
 async function loadConfig() {
   const response = await fetch('/voxout.config.json', { cache: 'no-store' })
   if (!response.ok) return { apiBaseUrl: '' }
   return { apiBaseUrl: '', ...await response.json() }
+}
+
+async function readError(response) {
+  const text = await response.text()
+  try {
+    return JSON.parse(text).error || text
+  } catch {
+    return text || `Request failed: ${response.status}`
+  }
 }
 
 function getProviderFormValues(provider) {
@@ -262,33 +482,34 @@ function getProviderFormValues(provider) {
   return values
 }
 
-function supportsInvokeTemplate(provider, template) {
+function supportsTestMode(provider, mode) {
   if (!provider) return false
-  if (template === 'asr') return Boolean(provider.capabilities?.asr)
-  if (template === 'tts') return Boolean(provider.capabilities?.tts)
-  return Boolean(provider.capabilities?.tts || provider.capabilities?.asr)
+  if (mode === 'asr') return Boolean(provider.capabilities?.asr)
+  return Boolean(provider.capabilities?.tts)
 }
 
-function getDefaultInvokeTemplate(provider) {
+function getDefaultTestMode(provider) {
   if (provider?.capabilities?.tts) return 'tts'
   if (provider?.capabilities?.asr) return 'asr'
-  return 'provider'
+  return 'tts'
 }
 
-function createInvokePayload(provider, template) {
-  const operation = template === 'asr' ? 'transcribe' : 'synthesize'
+function defaultSpeechForm(provider) {
   return {
-    provider: provider.id,
-    operation,
-    input: operation === 'transcribe'
-      ? provider.id === 'mimo'
-        ? {
-            audioData: 'data:audio/wav;base64,BASE64_AUDIO',
-            language: 'auto',
-            format: 'txt',
-          }
-        : { url: 'https://example.com/audio.m4a', format: 'txt' }
-      : { text: '你好，voxout。', voice: provider.id === 'edge' ? 'zh-CN-XiaoyiNeural' : undefined },
+    input: '你好，voxout。',
+    voice: provider?.id === 'edge' ? 'zh-CN-XiaoyiNeural' : '',
+    responseFormat: provider?.id === 'mimo' ? 'wav' : 'mp3',
+    speed: '1',
+  }
+}
+
+function defaultTranscriptionForm() {
+  return {
+    url: '',
+    audioData: '',
+    language: 'auto',
+    responseFormat: 'json',
+    mimeType: 'audio/wav',
   }
 }
 
@@ -298,6 +519,11 @@ function apiUrl(path, apiBaseUrl) {
 
 function normalizeApiBaseUrl(value) {
   return String(value || '').replace(/\/+$/, '')
+}
+
+function formatBytes(value) {
+  if (value < 1024) return `${value} B`
+  return `${(value / 1024).toFixed(1)} KB`
 }
 
 createRoot(document.querySelector('#root')).render(<App />)

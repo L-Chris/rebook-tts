@@ -1,0 +1,159 @@
+import assert from 'node:assert/strict'
+import { mkdtemp, rm } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { spawn } from 'node:child_process'
+import { once } from 'node:events'
+import { createServer } from 'node:net'
+import { after, before, test } from 'node:test'
+
+let serverProcess
+let baseUrl
+let audioDir
+let serverStdout = ''
+let serverStderr = ''
+
+before(async () => {
+  const port = await getFreePort()
+  audioDir = await mkdtemp(join(tmpdir(), 'voxout-openai-'))
+  baseUrl = `http://127.0.0.1:${port}`
+  serverProcess = spawn(process.execPath, ['dist/server.js'], {
+    cwd: new URL('..', import.meta.url),
+    env: {
+      ...process.env,
+      DATABASE_URL: '',
+      NODE_ENV: 'test',
+      PORT: String(port),
+      TTS_AUDIO_DIR: audioDir,
+    },
+    stdio: ['ignore', 'pipe', 'pipe'],
+  })
+
+  serverProcess.stdout.setEncoding('utf8')
+  serverProcess.stdout.on('data', chunk => { serverStdout += chunk })
+  serverProcess.stderr.setEncoding('utf8')
+  serverProcess.stderr.on('data', chunk => { serverStderr += chunk })
+
+  await waitForServer(serverProcess)
+})
+
+after(async () => {
+  if (serverProcess && !serverProcess.killed) {
+    serverProcess.kill()
+    await once(serverProcess, 'exit').catch(() => {})
+  }
+  if (audioDir) await rm(audioDir, { recursive: true, force: true })
+})
+
+test('GET /v1/models returns OpenAI-style model objects', async () => {
+  const response = await fetch(`${baseUrl}/v1/models`)
+  const payload = await response.json()
+
+  assert.equal(response.status, 200)
+  assert.equal(payload.object, 'list')
+  const mimo = payload.data.find(model => model.id === 'mimo')
+  assert.equal(mimo.object, 'model')
+  assert.equal(mimo.owned_by, 'voxout')
+  assert.equal(mimo.capabilities.tts, true)
+  assert.equal(mimo.capabilities.asr, true)
+})
+
+test('POST /v1/audio/speech returns generated audio bytes', async () => {
+  const response = await fetch(`${baseUrl}/v1/audio/speech`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      model: 'mock',
+      input: 'hello from openai compatible speech',
+      voice: 'mock-narrator',
+      response_format: 'wav',
+    }),
+  })
+  const audio = Buffer.from(await response.arrayBuffer())
+
+  assert.equal(response.status, 200)
+  assert.match(response.headers.get('content-type'), /^audio\/wav/)
+  assert.equal(audio.subarray(0, 4).toString('ascii'), 'RIFF')
+  assert.equal(audio.subarray(8, 12).toString('ascii'), 'WAVE')
+})
+
+test('POST /v1/audio/transcriptions accepts multipart file uploads', async () => {
+  const form = new FormData()
+  form.set('model', 'mock-asr')
+  form.set('response_format', 'json')
+  form.set('file', new Blob([Buffer.from('fake audio bytes')], { type: 'audio/wav' }), 'sample.wav')
+
+  const response = await fetch(`${baseUrl}/v1/audio/transcriptions`, {
+    method: 'POST',
+    body: form,
+  })
+  const payload = await response.json()
+
+  assert.equal(response.status, 200)
+  assert.deepEqual(payload, { text: 'Mock transcript for inline audio' })
+})
+
+test('POST /v1/audio/transcriptions supports text response format', async () => {
+  const form = new FormData()
+  form.set('model', 'mock-asr')
+  form.set('response_format', 'text')
+  form.set('file', new Blob([Buffer.from('fake audio bytes')], { type: 'audio/wav' }), 'sample.wav')
+
+  const response = await fetch(`${baseUrl}/v1/audio/transcriptions`, {
+    method: 'POST',
+    body: form,
+  })
+  const text = await response.text()
+
+  assert.equal(response.status, 200)
+  assert.match(response.headers.get('content-type'), /^text\/plain/)
+  assert.equal(text, 'Mock transcript for inline audio')
+})
+
+test('legacy POST /api/invoke is not available', async () => {
+  const response = await fetch(`${baseUrl}/api/invoke`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      provider: 'mock',
+      operation: 'synthesize',
+      input: { text: 'legacy request' },
+    }),
+  })
+  const payload = await response.json()
+
+  assert.equal(response.status, 404)
+  assert.equal(payload.error, 'Not found')
+})
+
+function waitForServer(child) {
+  return new Promise((resolve, reject) => {
+    let settled = false
+    const timer = setTimeout(() => reject(new Error('server did not start in time')), 5000)
+
+    child.once('exit', code => {
+      if (settled) return
+      settled = true
+      clearTimeout(timer)
+      reject(new Error(`server exited before ready with code ${code}\nstdout:\n${serverStdout}\nstderr:\n${serverStderr}`))
+    })
+
+    child.stdout.on('data', chunk => {
+      if (chunk.includes('voxout listening')) {
+        settled = true
+        clearTimeout(timer)
+        resolve()
+      }
+    })
+  })
+}
+
+async function getFreePort() {
+  const server = createServer()
+  server.listen(0, '127.0.0.1')
+  await once(server, 'listening')
+  const address = server.address()
+  server.close()
+  await once(server, 'close')
+  return address.port
+}
