@@ -311,7 +311,7 @@ function App() {
         name: designForm.name || undefined,
         text: designForm.text || undefined,
         response_format: designForm.responseFormat,
-        model_id: designForm.model || undefined,
+        model: designForm.model || undefined,
         auto_generate_text: designForm.autoGenerateText,
         guidance_scale: Number(designForm.guidanceScale) || undefined,
         seed: designForm.seed ? Number(designForm.seed) : undefined,

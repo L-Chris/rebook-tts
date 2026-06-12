@@ -151,8 +151,8 @@ export class MimoTtsProvider implements TtsProvider, AsrProvider, VoiceDesignPro
     if (!apiKey) throw new Error('mimo apiKey is required in provider settings.')
 
     const sampleText = normalizePrompt(request.text) ?? normalizePrompt(getConfigString(context, 'voiceSampleText')) ?? DEFAULT_VOICE_SAMPLE_TEXT
-    const voiceDescription = normalizePrompt(request.voiceDescription)
-    if (!voiceDescription) throw new Error('voiceDescription is required')
+    const voiceDescription = normalizePrompt(request.input)
+    if (!voiceDescription) throw new Error('input is required')
     const sample = await this.createDesignedVoiceSample(apiKey, voiceDescription, sampleText, context)
     const voiceId = `mimo_${randomUUID()}`
     return {

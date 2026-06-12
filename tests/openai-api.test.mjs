@@ -262,7 +262,8 @@ test('POST /v1/audio/design persists generated voices', async () => {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({
-      model: 'mock',
+      provider: 'mock',
+      model: 'mock-design-model',
       input: 'A calm narrator voice with a clean tone.',
       name: 'Calm Mock',
     }),
@@ -281,6 +282,30 @@ test('POST /v1/audio/design persists generated voices', async () => {
   const voicesPayload = await voicesResponse.json()
   assert.equal(voicesResponse.status, 200)
   assert.ok(voicesPayload.voices.some(voice => voice.voice_id === payload.voices[0].voice_id))
+})
+
+test('POST /v1/audio/design requires provider and input fields', async () => {
+  const legacyProviderResponse = await fetch(`${baseUrl}/v1/audio/design`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      model: 'mock',
+      input: 'A calm narrator voice.',
+      name: 'Legacy Provider',
+    }),
+  })
+  assert.equal(legacyProviderResponse.status, 400)
+
+  const legacyInputResponse = await fetch(`${baseUrl}/v1/audio/design`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      provider: 'mock',
+      voice_description: 'A calm narrator voice.',
+      name: 'Legacy Input',
+    }),
+  })
+  assert.equal(legacyInputResponse.status, 400)
 })
 
 test('POST /v1/audio/voices clones and persists provider-linked voices', async () => {

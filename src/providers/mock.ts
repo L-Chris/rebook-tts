@@ -67,15 +67,15 @@ export class MockTtsProvider implements TtsProvider, SoundEffectProvider, AudioI
   }
 
   async designVoice(request: VoiceDesignRequest): Promise<VoiceDesignResult> {
-    const voiceId = `mock-${getFrequency(request.voiceDescription)}`
-    const audio = createToneWav(700, getFrequency(request.voiceDescription)).toString('base64')
+    const voiceId = `mock-${getFrequency(request.input)}`
+    const audio = createToneWav(700, getFrequency(request.input)).toString('base64')
     return {
       provider: this.id,
       text: request.text ?? 'mock voice preview',
       voices: [{
         voiceId,
         name: request.name ?? 'Mock Designed Voice',
-        description: request.voiceDescription,
+        description: request.input,
         previewAudioData: `data:audio/wav;base64,${audio}`,
         previewMimeType: 'audio/wav',
         metadata: {},

@@ -37,6 +37,8 @@ import type {
   VoiceDesignRequest,
   VoicePreview,
   VoiceRecord,
+  JsonObject,
+  JsonValue,
 } from './types.js'
 
 const rootDir = fileURLToPath(new URL('..', import.meta.url))
@@ -250,7 +252,7 @@ async function createAudioIsolation(req: IncomingMessage, res: ServerResponse): 
 
 async function createVoiceDesign(req: IncomingMessage, res: ServerResponse): Promise<void> {
   const body = await readJson<Record<string, unknown>>(req)
-  const providerId = getOpenAiModelProvider(body.model, body.provider)
+  const providerId = getRequiredProvider(body.provider)
   assertPublicProviderAccess(providerId)
   const provider = getVoiceDesignProvider(providerId)
   const context = await getRuntimeConfig(provider.id)
@@ -535,32 +537,16 @@ function normalizeSoundEffectInput(providerId: string, input: unknown): SoundEff
 
 function normalizeVoiceDesignInput(providerId: string, input: unknown): VoiceDesignRequest {
   const value = input && typeof input === 'object' ? input as Record<string, unknown> : {}
-  const voiceDescription = typeof value.voice_description === 'string'
-    ? value.voice_description
-    : typeof value.voiceDescription === 'string'
-      ? value.voiceDescription
-      : typeof value.input === 'string'
-        ? value.input
-        : ''
-  if (!voiceDescription.trim()) throw new Error('voice_description is required')
+  const prompt = typeof value.input === 'string' ? value.input : ''
+  if (!prompt.trim()) throw new Error('input is required')
   return {
     provider: providerId,
-    voiceDescription,
-    name: typeof value.name === 'string' ? value.name : typeof value.voice_name === 'string' ? value.voice_name : undefined,
+    input: prompt,
+    name: typeof value.name === 'string' ? value.name : undefined,
     text: typeof value.text === 'string' ? value.text : undefined,
-    outputFormat: typeof value.response_format === 'string'
-      ? value.response_format
-      : typeof value.output_format === 'string'
-        ? value.output_format
-        : undefined,
-    model: typeof value.model_id === 'string' ? value.model_id : undefined,
-    autoGenerateText: typeof value.auto_generate_text === 'boolean' ? value.auto_generate_text : undefined,
-    loudness: typeof value.loudness === 'number' ? value.loudness : undefined,
-    seed: typeof value.seed === 'number' ? value.seed : undefined,
-    guidanceScale: typeof value.guidance_scale === 'number' ? value.guidance_scale : undefined,
-    quality: typeof value.quality === 'number' ? value.quality : undefined,
-    referenceAudioData: typeof value.reference_audio_base64 === 'string' ? value.reference_audio_base64 : undefined,
-    promptStrength: typeof value.prompt_strength === 'number' ? value.prompt_strength : undefined,
+    outputFormat: typeof value.response_format === 'string' ? value.response_format : undefined,
+    model: typeof value.model === 'string' ? value.model : undefined,
+    providerOptions: getProviderOptions(value, ['provider', 'input', 'name', 'text', 'response_format', 'model']),
   }
 }
 
@@ -834,6 +820,29 @@ function getOpenAiModelProvider(model: unknown, provider: unknown): string {
       : ''
   if (!providerId) throw new Error('model is required')
   return providerId
+}
+
+function getRequiredProvider(provider: unknown): string {
+  const providerId = typeof provider === 'string' ? provider.trim() : ''
+  if (!providerId) throw new Error('provider is required')
+  return providerId
+}
+
+function getProviderOptions(value: Record<string, unknown>, reservedKeys: string[]): JsonObject {
+  const reserved = new Set(reservedKeys)
+  const options: JsonObject = {}
+  for (const [key, item] of Object.entries(value)) {
+    if (reserved.has(key) || !isJsonValue(item)) continue
+    options[key] = item
+  }
+  return options
+}
+
+function isJsonValue(value: unknown): value is JsonValue {
+  if (value === null || typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') return true
+  if (Array.isArray(value)) return value.every(isJsonValue)
+  if (typeof value === 'object') return Object.values(value as Record<string, unknown>).every(isJsonValue)
+  return false
 }
 
 function resolveOpenAiProviderTarget(

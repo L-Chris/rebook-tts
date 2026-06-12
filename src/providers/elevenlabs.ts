@@ -226,6 +226,7 @@ export class ElevenLabsProvider implements TtsProvider, AsrProvider, SoundEffect
 
   async designVoice(request: VoiceDesignRequest, context: ProviderContext = {}): Promise<VoiceDesignResult> {
     const apiKey = getApiKey(context)
+    const options = request.providerOptions ?? {}
     const outputFormat = request.outputFormat ?? getConfigString(context, 'outputFormat') ?? DEFAULT_OUTPUT_FORMAT
     const url = new URL(`${getBaseUrl(context)}/text-to-voice/design`)
     url.searchParams.set('output_format', outputFormat)
@@ -237,16 +238,16 @@ export class ElevenLabsProvider implements TtsProvider, AsrProvider, SoundEffect
         'xi-api-key': apiKey,
       },
       body: JSON.stringify(compactObject({
-        voice_description: request.voiceDescription,
+        voice_description: request.input,
         model_id: request.model ?? getConfigString(context, 'voiceDesignModel') ?? 'eleven_multilingual_ttv_v2',
         text: request.text,
-        auto_generate_text: request.autoGenerateText,
-        loudness: request.loudness,
-        seed: request.seed,
-        guidance_scale: request.guidanceScale,
-        quality: request.quality,
-        reference_audio_base64: request.referenceAudioData ? stripDataUrlPrefix(request.referenceAudioData) : undefined,
-        prompt_strength: request.promptStrength,
+        auto_generate_text: options.auto_generate_text,
+        loudness: options.loudness,
+        seed: options.seed,
+        guidance_scale: options.guidance_scale,
+        quality: options.quality,
+        reference_audio_base64: typeof options.reference_audio_base64 === 'string' ? stripDataUrlPrefix(options.reference_audio_base64) : undefined,
+        prompt_strength: options.prompt_strength,
       })),
     })
     const payload = await readJsonResponse<ElevenLabsDesignPayload>(response)
@@ -261,7 +262,7 @@ export class ElevenLabsProvider implements TtsProvider, AsrProvider, SoundEffect
           voiceId: preview.generated_voice_id ?? `elevenlabs-preview-${index + 1}`,
           providerVoiceId: preview.generated_voice_id,
           name: request.name ?? `ElevenLabs Voice ${index + 1}`,
-          description: request.voiceDescription,
+          description: request.input,
           language: preview.language,
           previewAudioData: preview.audio_base_64
             ? `data:${mediaType};base64,${stripDataUrlPrefix(preview.audio_base_64)}`

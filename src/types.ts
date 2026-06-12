@@ -129,18 +129,12 @@ export interface AudioIsolationRequest {
 
 export interface VoiceDesignRequest {
   provider?: string
-  voiceDescription: string
+  input: string
   name?: string
   text?: string
   outputFormat?: string
   model?: string
-  autoGenerateText?: boolean
-  loudness?: number
-  seed?: number
-  guidanceScale?: number
-  quality?: number
-  referenceAudioData?: string
-  promptStrength?: number
+  providerOptions?: JsonObject
 }
 
 export interface VoiceCloneRequest {

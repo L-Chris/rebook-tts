@@ -229,10 +229,14 @@ test('ElevenLabs provider sends voice design requests', async () => {
 
   const provider = new ElevenLabsProvider()
   const result = await provider.designVoice({
-    voiceDescription: 'A warm expressive narrator voice.',
+    input: 'A warm expressive narrator voice.',
     name: 'Warm Narrator',
     text: 'This is a preview text for the generated voice.',
     outputFormat: 'mp3_44100_128',
+    providerOptions: {
+      auto_generate_text: true,
+      guidance_scale: 5,
+    },
   }, {
     config: {},
     secrets: { apiKey: 'test-eleven-key' },
@@ -244,6 +248,8 @@ test('ElevenLabs provider sends voice design requests', async () => {
     voice_description: 'A warm expressive narrator voice.',
     model_id: 'eleven_multilingual_ttv_v2',
     text: 'This is a preview text for the generated voice.',
+    auto_generate_text: true,
+    guidance_scale: 5,
   })
   assert.equal(result.voices[0].voiceId, 'generated-voice-1')
   assert.equal(result.voices[0].providerVoiceId, 'generated-voice-1')
