@@ -51,6 +51,13 @@ const audioDir = process.env.TTS_AUDIO_DIR ?? join(rootDir, 'audio')
 const publicDir = join(rootDir, 'public')
 const configStore = new ProviderConfigStore()
 const OPENAI_SPEECH_MODELS = new Set(['gpt-4o-mini-tts', 'tts-1', 'tts-1-hd'])
+const OPENAI_TRANSCRIPTION_MODELS = new Set([
+  'whisper-1',
+  'gpt-4o-transcribe',
+  'gpt-4o-mini-transcribe',
+  'gpt-4o-mini-transcribe-2025-12-15',
+  'gpt-4o-transcribe-diarize',
+])
 
 await mkdir(audioDir, { recursive: true })
 
@@ -270,7 +277,7 @@ async function createVoiceDesign(req: IncomingMessage, res: ServerResponse): Pro
 
 async function createVoice(req: IncomingMessage, res: ServerResponse): Promise<void> {
   const form = await readMultipartForm(req)
-  const providerId = getOpenAiModelProvider(form.fields.model, form.fields.provider)
+  const providerId = resolveOpenAiProviderTarget(form.fields.provider, form.fields.model, 'openai', hasVoiceCloneProvider)
   assertPublicProviderAccess(providerId)
   const provider = getVoiceCloneProvider(providerId)
   const context = await getRuntimeConfig(provider.id)
@@ -292,14 +299,13 @@ async function createVoice(req: IncomingMessage, res: ServerResponse): Promise<v
     object: 'audio.voice',
     created_at: toUnixSeconds(voice.createdAt),
     name: voice.name,
-    provider: provider.id,
-    voice: formatVoiceRecord(voice),
   })
 }
 
 async function createOpenAiTranscription(req: IncomingMessage, res: ServerResponse): Promise<void> {
   const form = await readMultipartForm(req)
-  const providerId = getOpenAiModelProvider(form.fields.model, form.fields.provider)
+  const target = resolveOpenAiTranscriptionTarget(form.fields.model, form.fields.provider)
+  const providerId = target.providerId
   assertPublicProviderAccess(providerId)
   const provider = getAsrProvider(providerId)
   const context = await getRuntimeConfig(provider.id)
@@ -308,12 +314,22 @@ async function createOpenAiTranscription(req: IncomingMessage, res: ServerRespon
   const file = form.files.file
   const responseFormat = normalizeTranscriptionResponseFormat(form.fields.response_format)
   const request: TranscribeRequest = {
-    model: form.fields.model_id || form.fields.asr_model || form.fields.asrModel,
+    model: target.model ?? form.fields.model_id ?? form.fields.asr_model ?? form.fields.asrModel,
     url: form.fields.url,
     audioData: form.fields.audioData,
     mimeType: form.fields.mimeType,
     language: form.fields.language,
-    format: responseFormat === 'srt' ? 'srt' : responseFormat === 'verbose_json' ? 'raw' : 'txt',
+    prompt: form.fields.prompt,
+    responseFormat,
+    format: responseFormat === 'srt'
+      ? 'srt'
+      : responseFormat === 'vtt'
+        ? 'vtt'
+        : responseFormat === 'verbose_json'
+          ? 'raw'
+          : responseFormat === 'diarized_json'
+            ? 'diarized_json'
+            : 'txt',
   }
   if (file) {
     request.audioData = `data:${normalizeMimeType(file.contentType)};base64,${file.data.toString('base64')}`
@@ -330,10 +346,10 @@ async function createOpenAiTranscription(req: IncomingMessage, res: ServerRespon
     `Transcription timed out after ${timeoutMs}ms for provider ${provider.id}`,
   )
   const text = result.text ?? ''
-  if (responseFormat === 'text' || responseFormat === 'srt') {
-    return sendText(res, text, 'text/plain; charset=utf-8')
+  if (responseFormat === 'text' || responseFormat === 'srt' || responseFormat === 'vtt') {
+    return sendText(res, text, transcriptionTextContentType(responseFormat))
   }
-  if (responseFormat === 'verbose_json') {
+  if (responseFormat === 'verbose_json' || responseFormat === 'diarized_json') {
     return sendJson(res, {
       text,
       segments: result.segments,
@@ -842,6 +858,19 @@ function getOpenAiModelProvider(model: unknown, provider: unknown): string {
   return providerId
 }
 
+function resolveOpenAiProviderTarget(
+  provider: unknown,
+  legacyModel: unknown,
+  defaultProviderId: string,
+  hasProvider: (id: string) => boolean,
+): string {
+  const explicitProvider = typeof provider === 'string' ? provider.trim() : ''
+  if (explicitProvider) return explicitProvider
+  const legacyProvider = typeof legacyModel === 'string' ? legacyModel.trim() : ''
+  if (legacyProvider && hasProvider(legacyProvider)) return legacyProvider
+  return defaultProviderId
+}
+
 function resolveOpenAiSpeechTarget(model: unknown, provider: unknown): { providerId: string, model?: string } {
   const modelId = typeof model === 'string' ? model.trim() : ''
   const explicitProvider = typeof provider === 'string' ? provider.trim() : ''
@@ -858,9 +887,43 @@ function resolveOpenAiSpeechTarget(model: unknown, provider: unknown): { provide
   return { providerId: 'openai', model: modelId }
 }
 
+function resolveOpenAiTranscriptionTarget(model: unknown, provider: unknown): { providerId: string, model?: string } {
+  const modelId = typeof model === 'string' ? model.trim() : ''
+  const explicitProvider = typeof provider === 'string' ? provider.trim() : ''
+  if (explicitProvider) {
+    return { providerId: explicitProvider, model: modelId || undefined }
+  }
+  if (!modelId) throw new Error('model is required')
+  if (hasAsrProvider(modelId)) {
+    return { providerId: modelId }
+  }
+  if (OPENAI_TRANSCRIPTION_MODELS.has(modelId)) {
+    return { providerId: 'openai', model: modelId }
+  }
+  return { providerId: 'openai', model: modelId }
+}
+
 function hasTtsProvider(id: string): boolean {
   try {
     getTtsProvider(id)
+    return true
+  } catch {
+    return false
+  }
+}
+
+function hasAsrProvider(id: string): boolean {
+  try {
+    getAsrProvider(id)
+    return true
+  } catch {
+    return false
+  }
+}
+
+function hasVoiceCloneProvider(id: string): boolean {
+  try {
+    getVoiceCloneProvider(id)
     return true
   } catch {
     return false
@@ -891,9 +954,14 @@ function normalizeSpeechStreamFormat(value: unknown): 'audio' | 'sse' | undefine
   throw new Error('stream_format must be "audio" or "sse"')
 }
 
-function normalizeTranscriptionResponseFormat(value: string | undefined): 'json' | 'text' | 'srt' | 'verbose_json' {
-  if (value === 'text' || value === 'srt' || value === 'verbose_json') return value
+function normalizeTranscriptionResponseFormat(value: string | undefined): 'json' | 'text' | 'srt' | 'verbose_json' | 'vtt' | 'diarized_json' {
+  if (value === 'text' || value === 'srt' || value === 'verbose_json' || value === 'vtt' || value === 'diarized_json') return value
   return 'json'
+}
+
+function transcriptionTextContentType(format: 'text' | 'srt' | 'vtt'): string {
+  if (format === 'vtt') return 'text/vtt; charset=utf-8'
+  return 'text/plain; charset=utf-8'
 }
 
 function normalizeMimeType(value: string | undefined): string {

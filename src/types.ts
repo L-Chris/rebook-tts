@@ -114,7 +114,9 @@ export interface TranscribeRequest {
   audioData?: string
   mimeType?: string
   language?: string
-  format?: 'txt' | 'srt' | 'raw'
+  prompt?: string
+  responseFormat?: 'json' | 'text' | 'srt' | 'verbose_json' | 'vtt' | 'diarized_json'
+  format?: 'txt' | 'srt' | 'vtt' | 'raw' | 'diarized_json'
 }
 
 export interface TranscribeSegment {

@@ -143,6 +143,7 @@ test('OpenAI provider sends speech-to-text requests', async () => {
       model: init.body.get('model'),
       responseFormat: init.body.get('response_format'),
       language: init.body.get('language'),
+      prompt: init.body.get('prompt'),
       file: init.body.get('file'),
     }
     return new Response(JSON.stringify({
@@ -160,6 +161,7 @@ test('OpenAI provider sends speech-to-text requests', async () => {
     audioData: `data:audio/wav;base64,${Buffer.alloc(256, 1).toString('base64')}`,
     mimeType: 'audio/wav',
     language: 'en',
+    prompt: 'Technical vocabulary appears in this recording.',
     format: 'raw',
   }, {
     config: { asrModel: 'gpt-4o-transcribe' },
@@ -169,8 +171,9 @@ test('OpenAI provider sends speech-to-text requests', async () => {
   assert.equal(captured.url, 'https://api.openai.com/v1/audio/transcriptions')
   assert.equal(captured.headers.authorization, 'Bearer test-openai-key')
   assert.equal(captured.model, 'whisper-1')
-  assert.equal(captured.responseFormat, 'json')
+  assert.equal(captured.responseFormat, 'verbose_json')
   assert.equal(captured.language, 'en')
+  assert.equal(captured.prompt, 'Technical vocabulary appears in this recording.')
   assert.equal(captured.file.type, 'audio/wav')
   assert.equal(result.text, 'Recognized by OpenAI')
   assert.equal(result.raw.text, 'Recognized by OpenAI')

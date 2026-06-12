@@ -249,7 +249,7 @@ test('POST /v1/audio/design persists generated voices', async () => {
 
 test('POST /v1/audio/voices clones and persists provider-linked voices', async () => {
   const form = new FormData()
-  form.set('model', 'mock')
+  form.set('provider', 'mock')
   form.set('name', 'Uploaded Mock')
   form.set('description', 'Uploaded voice sample')
   form.set('audio_sample', new Blob([createTinyWav()], { type: 'audio/wav' }), 'voice.wav')
@@ -264,8 +264,9 @@ test('POST /v1/audio/voices clones and persists provider-linked voices', async (
   assert.equal(payload.object, 'audio.voice')
   assert.equal(payload.name, 'Uploaded Mock')
   assert.match(payload.id, /^mock-clone-/)
-  assert.equal(payload.voice.provider_links[0].provider, 'mock')
-  assert.equal(payload.voice.provider_links[0].provider_voice_id, payload.id)
+  assert.equal(typeof payload.created_at, 'number')
+  assert.equal(payload.provider, undefined)
+  assert.equal(payload.voice, undefined)
 
   const voicesResponse = await fetch(`${baseUrl}/api/voices?provider=mock`)
   const voicesPayload = await voicesResponse.json()
@@ -291,7 +292,8 @@ test('POST /v1/audio/speech rejects unsupported voice_id providers', async () =>
 
 test('POST /v1/audio/transcriptions accepts multipart file uploads', async () => {
   const form = new FormData()
-  form.set('model', 'mock-asr')
+  form.set('provider', 'mock-asr')
+  form.set('model', 'mock-asr-model')
   form.set('response_format', 'json')
   form.set('file', new Blob([Buffer.from('fake audio bytes')], { type: 'audio/wav' }), 'sample.wav')
 
@@ -307,7 +309,8 @@ test('POST /v1/audio/transcriptions accepts multipart file uploads', async () =>
 
 test('POST /v1/audio/transcriptions supports text response format', async () => {
   const form = new FormData()
-  form.set('model', 'mock-asr')
+  form.set('provider', 'mock-asr')
+  form.set('model', 'mock-asr-model')
   form.set('response_format', 'text')
   form.set('file', new Blob([Buffer.from('fake audio bytes')], { type: 'audio/wav' }), 'sample.wav')
 
@@ -320,6 +323,21 @@ test('POST /v1/audio/transcriptions supports text response format', async () => 
   assert.equal(response.status, 200)
   assert.match(response.headers.get('content-type'), /^text\/plain/)
   assert.equal(text, 'Mock transcript for inline audio')
+})
+
+test('POST /v1/audio/transcriptions treats OpenAI ASR models as models, not providers', async () => {
+  const form = new FormData()
+  form.set('model', 'gpt-4o-transcribe')
+  form.set('file', new Blob([Buffer.from('fake audio bytes')], { type: 'audio/wav' }), 'sample.wav')
+
+  const response = await fetch(`${baseUrl}/v1/audio/transcriptions`, {
+    method: 'POST',
+    body: form,
+  })
+  const payload = await response.json()
+
+  assert.equal(response.status, 400)
+  assert.match(payload.error, /openai apiKey is required/)
 })
 
 function waitForServer(child) {

@@ -22,11 +22,14 @@ OpenAI-compatible audio API:
 
 - `GET /v1/models`
 - `POST /v1/audio/speech`
+- `POST /v1/audio/voices`
+- `POST /v1/audio/transcriptions`
+
+voxout extension audio API:
+
 - `POST /v1/audio/effect`
 - `POST /v1/audio/isolation`
 - `POST /v1/audio/design`
-- `POST /v1/audio/voices`
-- `POST /v1/audio/transcriptions`
 
 `/v1/audio/speech` follows the OpenAI speech request shape: `model` is the TTS
 model, `input` is the text, `voice` is the voice name or id, and
@@ -37,6 +40,11 @@ provider-as-`model` form is still accepted for compatibility.
 The speech endpoint also accepts `voice_id` for providers that support stored
 voice records, currently `openai`, `cartesia`, `elevenlabs`, `gradium`, and
 `mimo`.
+`/v1/audio/transcriptions` follows the OpenAI multipart shape: `model` is the
+ASR model, `file` is the uploaded audio, and `response_format`, `language`, and
+`prompt` are optional. Use the `provider` extension to choose a non-OpenAI ASR
+backend. `/v1/audio/voices` follows the OpenAI form-data shape with `name`,
+`consent`, and `audio_sample`, plus the same optional `provider` extension.
 For streaming TTS, pass OpenAI-compatible `stream_format` with `audio` or
 `sse`. Streaming support is currently exposed by `default`, `openai`,
 `cartesia`, `mimo`, `gradium`, and `elevenlabs`; `elevenlabs` and `gradium`
@@ -85,7 +93,7 @@ Sound effect generation:
 curl -X POST http://127.0.0.1:4177/v1/audio/effect \
   -H 'content-type: application/json' \
   --output effect.mp3 \
-  --data '{"model":"elevenlabs","input":"a short cinematic whoosh","duration_seconds":1.5,"prompt_influence":0.3,"response_format":"mp3_44100_128"}'
+  --data '{"provider":"elevenlabs","input":"a short cinematic whoosh","duration_seconds":1.5,"prompt_influence":0.3,"response_format":"mp3_44100_128"}'
 ```
 
 Voice isolation:
@@ -93,7 +101,7 @@ Voice isolation:
 ```bash
 curl -X POST http://127.0.0.1:4177/v1/audio/isolation \
   --output isolated.mp3 \
-  -F model=elevenlabs \
+  -F provider=elevenlabs \
   -F audio=@sample.wav
 ```
 
@@ -102,14 +110,14 @@ Voice design:
 ```bash
 curl -X POST http://127.0.0.1:4177/v1/audio/design \
   -H 'content-type: application/json' \
-  --data '{"model":"elevenlabs","input":"A calm narrator voice with a clean tone.","name":"Calm Narrator","auto_generate_text":true}'
+  --data '{"provider":"elevenlabs","input":"A calm narrator voice with a clean tone.","name":"Calm Narrator","auto_generate_text":true}'
 ```
 
 Voice cloning from an audio sample:
 
 ```bash
 curl -X POST http://127.0.0.1:4177/v1/audio/voices \
-  -F model=openai \
+  -F provider=openai \
   -F name='Narrator Clone' \
   -F consent=cons_1234 \
   -F audio_sample=@sample.wav
@@ -119,7 +127,8 @@ Transcription from a local file:
 
 ```bash
 curl -X POST http://127.0.0.1:4177/v1/audio/transcriptions \
-  -F model=openai \
+  -F provider=openai \
+  -F model=gpt-4o-transcribe \
   -F response_format=json \
   -F language=auto \
   -F file=@sample.wav
@@ -130,7 +139,7 @@ providers:
 
 ```bash
 curl -X POST http://127.0.0.1:4177/v1/audio/transcriptions \
-  -F model=default \
+  -F provider=default \
   -F response_format=text \
   -F url=https://example.com/audio.m4a
 ```

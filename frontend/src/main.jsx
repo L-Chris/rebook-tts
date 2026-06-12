@@ -186,7 +186,8 @@ function App() {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({
-        model: selectedProvider.id,
+        provider: selectedProvider.id,
+        model: speechForm.model || undefined,
         input: speechForm.input,
         voice: speechForm.voice || undefined,
         voice_id: speechForm.voiceId || undefined,
@@ -219,9 +220,9 @@ function App() {
 
   async function runTranscriptionTest() {
     const form = new FormData()
-    form.set('model', selectedProvider.id)
+    form.set('provider', selectedProvider.id)
     form.set('response_format', transcriptionForm.responseFormat)
-    if (transcriptionForm.model.trim()) form.set('model_id', transcriptionForm.model.trim())
+    if (transcriptionForm.model.trim()) form.set('model', transcriptionForm.model.trim())
     if (transcriptionForm.language.trim()) form.set('language', transcriptionForm.language.trim())
     if (transcriptionFile) {
       form.set('file', transcriptionFile)
@@ -253,7 +254,7 @@ function App() {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({
-        model: selectedProvider.id,
+        provider: selectedProvider.id,
         input: effectForm.input,
         response_format: effectForm.responseFormat,
         duration_seconds: Number(effectForm.durationSeconds) || undefined,
@@ -275,7 +276,7 @@ function App() {
 
   async function runIsolationTest() {
     const form = new FormData()
-    form.set('model', selectedProvider.id)
+    form.set('provider', selectedProvider.id)
     form.set('file_format', isolationForm.fileFormat)
     if (isolationFile) {
       form.set('audio', isolationFile)
@@ -306,7 +307,7 @@ function App() {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({
-        model: selectedProvider.id,
+        provider: selectedProvider.id,
         input: designForm.voiceDescription,
         name: designForm.name || undefined,
         text: designForm.text || undefined,
@@ -334,7 +335,7 @@ function App() {
 
   async function runCloneTest() {
     const form = new FormData()
-    form.set('model', selectedProvider.id)
+    form.set('provider', selectedProvider.id)
     form.set('name', cloneForm.name)
     if (cloneForm.consent.trim()) form.set('consent', cloneForm.consent.trim())
     if (cloneForm.description.trim()) form.set('description', cloneForm.description.trim())

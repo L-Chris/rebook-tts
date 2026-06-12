@@ -163,20 +163,22 @@ export class OpenAiProvider implements TtsProvider, AsrProvider, VoiceCloneProvi
   async transcribe(request: TranscribeRequest, context: ProviderContext = {}): Promise<TranscribeResult> {
     const apiKey = getApiKey(context)
     const audio = await resolveTranscriptionAudio(request)
-    const responseFormat = normalizeTranscriptionResponseFormat(request.format)
+    const responseFormat = normalizeTranscriptionResponseFormat(request.responseFormat, request.format)
     const form = new FormData()
     form.set('model', request.model ?? getConfigString(context, 'asrModel') ?? DEFAULT_ASR_MODEL)
     form.set('file', new Blob([audio.data], { type: audio.mimeType }), audio.fileName)
     form.set('response_format', responseFormat)
     const language = normalizeLanguage(request.language)
     if (language) form.set('language', language)
+    const prompt = normalizePrompt(request.prompt)
+    if (prompt) form.set('prompt', prompt)
 
     const response = await fetch(`${getBaseUrl(context)}/audio/transcriptions`, {
       method: 'POST',
       headers: { authorization: `Bearer ${apiKey}` },
       body: form,
     })
-    if (responseFormat === 'text' || responseFormat === 'srt') {
+    if (responseFormat === 'text' || responseFormat === 'srt' || responseFormat === 'vtt') {
       const text = await response.text()
       if (!response.ok) throw new Error(text || `OpenAI transcription request failed: ${response.status}`)
       return {
@@ -253,9 +255,16 @@ function normalizeResponseFormat(value: string): 'mp3' | 'opus' | 'aac' | 'flac'
   return 'mp3'
 }
 
-function normalizeTranscriptionResponseFormat(format: TranscribeRequest['format']): 'json' | 'text' | 'srt' {
+function normalizeTranscriptionResponseFormat(
+  responseFormat: TranscribeRequest['responseFormat'],
+  format: TranscribeRequest['format'],
+): 'json' | 'text' | 'srt' | 'verbose_json' | 'vtt' | 'diarized_json' {
+  if (responseFormat === 'text' || responseFormat === 'srt' || responseFormat === 'verbose_json' || responseFormat === 'vtt' || responseFormat === 'diarized_json') return responseFormat
   if (format === 'txt') return 'text'
   if (format === 'srt') return 'srt'
+  if (format === 'vtt') return 'vtt'
+  if (format === 'diarized_json') return 'diarized_json'
+  if (format === 'raw') return 'verbose_json'
   return 'json'
 }
 
@@ -263,6 +272,11 @@ function normalizeLanguage(value: string | undefined): string | undefined {
   const trimmed = value?.trim()
   if (!trimmed || trimmed === 'auto') return undefined
   return trimmed
+}
+
+function normalizePrompt(value: string | undefined): string | undefined {
+  const trimmed = value?.trim()
+  return trimmed || undefined
 }
 
 function getMimeType(format: string, responseType: string | undefined): string {
