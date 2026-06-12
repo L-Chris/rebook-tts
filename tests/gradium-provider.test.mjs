@@ -1,0 +1,223 @@
+import assert from 'node:assert/strict'
+import { afterEach, test } from 'node:test'
+import { WebSocketServer } from 'ws'
+import { GradiumProvider } from '../dist/providers/gradium.js'
+import { listProviderDefinitions } from '../dist/providers/registry.js'
+
+const originalFetch = globalThis.fetch
+afterEach(() => {
+  globalThis.fetch = originalFetch
+})
+
+test('Gradium provider sends text-to-speech requests', async () => {
+  let captured
+  globalThis.fetch = async (url, init) => {
+    captured = {
+      url: String(url),
+      headers: init.headers,
+      body: JSON.parse(init.body),
+    }
+    return new Response(Buffer.alloc(256, 1), {
+      status: 200,
+      headers: { 'content-type': 'audio/wav' },
+    })
+  }
+
+  const provider = new GradiumProvider()
+  const result = await provider.synthesize({
+    voiceId: 'gradium-voice-1',
+    outputFormat: 'pcm_16000',
+    segment: {
+      id: 'tts',
+      text: 'Hello from Gradium.',
+    },
+  }, {
+    config: {},
+    secrets: { apiKey: 'test-gradium-key' },
+  })
+
+  assert.equal(result.audio.length, 256)
+  assert.equal(result.mimeType, 'audio/wav')
+  assert.equal(captured.url, 'https://api.gradium.ai/api/post/speech/tts')
+  assert.equal(captured.headers['x-api-key'], 'test-gradium-key')
+  assert.deepEqual(captured.body, {
+    text: 'Hello from Gradium.',
+    voice_id: 'gradium-voice-1',
+    output_format: 'pcm_16000',
+    only_audio: true,
+  })
+})
+
+test('Gradium provider streams text-to-speech audio over WebSocket', async () => {
+  const server = new WebSocketServer({ port: 0 })
+  const address = await new Promise(resolve => server.once('listening', () => resolve(server.address())))
+  const received = []
+  server.on('connection', socket => {
+    socket.on('message', data => {
+      const message = JSON.parse(Buffer.from(data).toString('utf8'))
+      received.push(message)
+      if (message.type === 'end_of_stream') {
+        socket.send(JSON.stringify({
+          type: 'audio',
+          audio: Buffer.alloc(256, 3).toString('base64'),
+        }))
+        socket.send(JSON.stringify({ type: 'end_of_stream' }))
+      }
+    })
+  })
+
+  try {
+    const provider = new GradiumProvider()
+    const result = await provider.streamSynthesize({
+      voiceId: 'gradium-voice-1',
+      outputFormat: 'pcm',
+      segment: {
+        id: 'tts-stream',
+        text: 'Stream from Gradium.',
+      },
+    }, {
+      config: {
+        wsUrl: `ws://127.0.0.1:${address.port}/api`,
+      },
+      secrets: { apiKey: 'test-gradium-key' },
+    })
+
+    const streamedAudio = await readStreamBuffer(result.stream)
+    assert.equal(result.mimeType, 'audio/pcm')
+    assert.equal(streamedAudio.length, 256)
+    assert.equal(streamedAudio[0], 3)
+    assert.deepEqual(received[0], {
+      type: 'setup',
+      voice_id: 'gradium-voice-1',
+      model_name: 'default',
+      output_format: 'pcm',
+      close_ws_on_eos: true,
+    })
+    assert.deepEqual(received[1], { type: 'text', text: 'Stream from Gradium.' })
+    assert.deepEqual(received[2], { type: 'end_of_stream' })
+  } finally {
+    await new Promise(resolve => server.close(resolve))
+  }
+})
+
+test('Gradium provider sends speech-to-text requests', async () => {
+  let captured
+  globalThis.fetch = async (url, init) => {
+    captured = {
+      url: String(url),
+      headers: init.headers,
+      body: init.body,
+    }
+    return new Response([
+      JSON.stringify({ type: 'text', text: 'Recognized ' }),
+      JSON.stringify({ type: 'end_text', text: 'by Gradium' }),
+    ].join('\n'), {
+      status: 200,
+      headers: { 'content-type': 'application/x-ndjson' },
+    })
+  }
+
+  const provider = new GradiumProvider()
+  const result = await provider.transcribe({
+    model: 'fast-asr',
+    audioData: `data:audio/wav;base64,${Buffer.alloc(256, 1).toString('base64')}`,
+    language: 'en-US',
+    format: 'raw',
+  }, {
+    config: {},
+    secrets: { apiKey: 'test-gradium-key' },
+  })
+
+  const url = new URL(captured.url)
+  assert.equal(`${url.origin}${url.pathname}`, 'https://api.gradium.ai/api/post/speech/asr')
+  assert.equal(url.searchParams.get('model'), 'fast-asr')
+  assert.equal(url.searchParams.get('input_format'), 'wav')
+  assert.equal(url.searchParams.get('json_config'), JSON.stringify({ language: 'en' }))
+  assert.equal(captured.headers['x-api-key'], 'test-gradium-key')
+  assert.equal(captured.headers['content-type'], 'audio/wav')
+  assert.equal(captured.body.type, 'audio/wav')
+  assert.equal(result.text, 'Recognized by Gradium')
+  assert.equal(result.raw.length, 2)
+})
+
+test('Gradium provider sends voice clone requests and lists voices', async () => {
+  const captures = []
+  globalThis.fetch = async (url, init) => {
+    captures.push({ url: String(url), headers: init.headers, init })
+    if (init?.method === 'POST') {
+      return new Response(JSON.stringify({
+        uid: 'gradium-clone-1',
+        was_updated: false,
+      }), {
+        status: 201,
+        headers: { 'content-type': 'application/json' },
+      })
+    }
+    return new Response(JSON.stringify([{
+      uid: 'gradium-voice-2',
+      name: 'Catalog Voice',
+      is_catalog: true,
+      is_pro_clone: false,
+      language: 'en',
+    }]), {
+      status: 200,
+      headers: { 'content-type': 'application/json' },
+    })
+  }
+
+  const provider = new GradiumProvider()
+  const clone = await provider.cloneVoice({
+    name: 'Narrator',
+    description: 'Calm narrator',
+    language: 'en-US',
+    audioData: `data:audio/wav;base64,${Buffer.alloc(256, 1).toString('base64')}`,
+  }, {
+    config: { cloneTimeoutSeconds: 12 },
+    secrets: { apiKey: 'test-gradium-key' },
+  })
+  const voices = await provider.listVoices({
+    config: {},
+    secrets: { apiKey: 'test-gradium-key' },
+  })
+
+  const cloneCapture = captures[0]
+  assert.equal(cloneCapture.url, 'https://api.gradium.ai/api/voices/')
+  assert.equal(cloneCapture.headers['x-api-key'], 'test-gradium-key')
+  assert.equal(cloneCapture.init.body.get('name'), 'Narrator')
+  assert.equal(cloneCapture.init.body.get('language'), 'en')
+  assert.equal(cloneCapture.init.body.get('input_format'), 'wav')
+  assert.equal(cloneCapture.init.body.get('timeout_s'), '12')
+  assert.equal(clone.voice.voiceId, 'gradium-clone-1')
+  assert.equal(clone.voice.providerVoiceId, 'gradium-clone-1')
+  assert.equal(captures[1].url, 'https://api.gradium.ai/api/voices/?limit=100&include_catalog=true')
+  assert.deepEqual(voices[0], {
+    id: 'gradium-voice-2',
+    name: 'Catalog Voice',
+    locale: 'en',
+    provider: 'gradium',
+    capabilities: { tts: true, ttsStreaming: true, voiceClone: false },
+  })
+})
+
+test('Gradium provider exposes metadata', async () => {
+  const providers = listProviderDefinitions()
+  const gradium = providers.find(item => item.id === 'gradium')
+  assert.equal(gradium.name, 'Gradium')
+  assert.equal(gradium.capabilities.tts, true)
+  assert.equal(gradium.capabilities.ttsStreaming, true)
+  assert.equal(gradium.capabilities.asr, true)
+  assert.equal(gradium.capabilities.voiceClone, true)
+  assert.ok(gradium.fields.find(field => field.key === 'ttsModel').options.includes('default'))
+  assert.ok(gradium.fields.find(field => field.key === 'asrModel').options.includes('default'))
+})
+
+async function readStreamBuffer(stream) {
+  const reader = stream.getReader()
+  const chunks = []
+  while (true) {
+    const { done, value } = await reader.read()
+    if (done) break
+    chunks.push(Buffer.from(value))
+  }
+  return Buffer.concat(chunks)
+}

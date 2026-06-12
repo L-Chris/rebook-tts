@@ -11,7 +11,9 @@ into the `ProviderConfig` table.
 
 - `default`: Microsoft Edge online TTS plus direct Bilibili/Bcut URL ASR.
 - `openai`: OpenAI TTS, ASR, and custom voice cloning.
+- `cartesia`: Cartesia TTS, streaming TTS, ASR, voice listing, and voice cloning.
 - `mimo`: Xiaomi MiMo TTS with preset voices, voice design, and ASR.
+- `gradium`: Gradium TTS, streaming TTS, ASR, voice listing, and voice cloning.
 - `elevenlabs`: ElevenLabs TTS, ASR, sound effects, isolation, voice design, and voice cloning.
 
 ## API
@@ -27,12 +29,14 @@ OpenAI-compatible audio API:
 - `POST /v1/audio/transcriptions`
 
 The OpenAI-style `model` field maps to a voxout provider id such as `default`,
-`openai`, `mimo`, or `elevenlabs`.
+`openai`, `cartesia`, `mimo`, `gradium`, or `elevenlabs`.
 `/v1/audio/speech` also accepts `voice_id` for providers that support stored
-voice records, currently `openai`, `elevenlabs`, and `mimo`.
+voice records, currently `openai`, `cartesia`, `elevenlabs`, `gradium`, and
+`mimo`.
 For streaming TTS, pass OpenAI-compatible `stream_format` with `audio` or
-`sse`. Streaming support is currently exposed by `default`, `openai`, `mimo`,
-and `elevenlabs`; `elevenlabs` supports raw audio streaming only.
+`sse`. Streaming support is currently exposed by `default`, `openai`,
+`cartesia`, `mimo`, `gradium`, and `elevenlabs`; `elevenlabs` and `gradium`
+support raw audio streaming only.
 
 Stored voices are provider-neutral records. Platform-specific voice ids and
 account bindings are kept in `VoiceProviderLink`, so one voxout `voice_id` can

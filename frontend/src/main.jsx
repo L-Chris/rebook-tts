@@ -1052,7 +1052,7 @@ function getTestModeLabel(mode) {
 }
 
 function supportsVoiceId(provider) {
-  return provider?.id === 'openai' || provider?.id === 'elevenlabs' || provider?.id === 'mimo'
+  return ['openai', 'elevenlabs', 'mimo', 'cartesia', 'gradium'].includes(provider?.id)
 }
 
 function defaultSpeechForm(provider) {

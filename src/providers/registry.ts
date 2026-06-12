@@ -1,5 +1,7 @@
+import { CartesiaProvider } from './cartesia.js'
 import { ElevenLabsProvider } from './elevenlabs.js'
 import { DefaultProvider } from './default/index.js'
+import { GradiumProvider } from './gradium.js'
 import { MimoTtsProvider } from './mimo.js'
 import { MockAsrProvider, MockTtsProvider } from './mock.js'
 import { OpenAiProvider } from './openai.js'
@@ -199,9 +201,17 @@ const openAiProvider = new OpenAiProvider()
 registerTtsProvider(openAiProvider)
 registerAsrProvider(openAiProvider)
 registerVoiceCloneProvider(openAiProvider)
+const cartesiaProvider = new CartesiaProvider()
+registerTtsProvider(cartesiaProvider)
+registerAsrProvider(cartesiaProvider)
+registerVoiceCloneProvider(cartesiaProvider)
 const defaultProvider = new DefaultProvider()
 registerTtsProvider(defaultProvider)
 registerAsrProvider(defaultProvider)
+const gradiumProvider = new GradiumProvider()
+registerTtsProvider(gradiumProvider)
+registerAsrProvider(gradiumProvider)
+registerVoiceCloneProvider(gradiumProvider)
 const mimoProvider = new MimoTtsProvider()
 registerTtsProvider(mimoProvider)
 registerVoiceCloneProvider(mimoProvider)

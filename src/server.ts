@@ -608,7 +608,7 @@ async function resolveVoiceCloneUrl(
 async function resolveVoiceIdForSynthesis(providerId: string, request: SynthesizeRequest): Promise<void> {
   const voiceId = request.voiceId ?? request.segment.voiceId
   if (!voiceId) return
-  if (providerId !== 'openai' && providerId !== 'elevenlabs' && providerId !== 'mimo') {
+  if (providerId !== 'openai' && providerId !== 'elevenlabs' && providerId !== 'mimo' && providerId !== 'cartesia' && providerId !== 'gradium') {
     throw new Error(`voice_id is not supported for provider ${providerId}`)
   }
   const voice = await configStore.getVoice(providerId, voiceId)
