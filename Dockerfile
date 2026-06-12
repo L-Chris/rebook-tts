@@ -8,6 +8,7 @@ RUN npm ci
 COPY tsconfig.json ./
 COPY prisma ./prisma
 COPY src ./src
+COPY frontend ./frontend
 RUN npm run build
 
 FROM node:25-alpine AS runtime
@@ -23,7 +24,7 @@ COPY prisma ./prisma
 RUN npm ci
 
 COPY --from=build /app/dist ./dist
-COPY public ./public
+COPY --from=build /app/public ./public
 
 RUN mkdir -p /app/audio
 

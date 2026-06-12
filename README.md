@@ -11,7 +11,7 @@ model choices should be managed from the web console or inserted into the
 
 - `mock`: local WAV TTS for development and tests.
 - `edge`: Microsoft Edge online TTS.
-- `mimo`: Xiaomi MiMo TTS with preset voices and voice design.
+- `mimo`: Xiaomi MiMo TTS with preset voices, voice design, and ASR.
 - `elevenlabs`: ElevenLabs sound-effects generation.
 - `mock-asr`: local ASR stub for development.
 - `bilibili-asr`: ASR through the `bilibili-mcp` Flask API.
@@ -44,6 +44,15 @@ curl -X POST http://127.0.0.1:4177/api/invoke \
   --data '{"provider":"bilibili-asr","operation":"transcribe","input":{"url":"https://example.com/audio.m4a","format":"txt"}}'
 ```
 
+MiMo ASR accepts either `input.url` or inline audio data. Inline data can be a
+full data URL or a base64 payload with `mimeType`:
+
+```bash
+curl -X POST http://127.0.0.1:4177/api/invoke \
+  -H 'content-type: application/json' \
+  --data '{"provider":"mimo","operation":"transcribe","input":{"audioData":"data:audio/wav;base64,...","language":"auto","format":"txt"}}'
+```
+
 ## Provider Config
 
 ```bash
@@ -63,14 +72,22 @@ npm test
 npm start
 ```
 
+The web console is built with React, Tailwind CSS, and Vite. Source files live
+under `frontend/`; `npm run build:web` writes the static build output to
+`public/`. During local UI work, run:
+
+```bash
+npm run dev
+```
+
 Set `DATABASE_URL` to enable persisted provider settings. Deployment
 environment variables are limited to service-level settings such as port,
 database URL, audio storage, and global synthesis timeout.
 
 ## Static Frontend Deployment
 
-The files under `public/` can be served by voxout itself or copied to the
-existing static-server document tree:
+Run `npm run build:web` first. The generated files under `public/` can be served
+by voxout itself or copied to the existing static-server document tree:
 
 ```bash
 rsync -a --delete public/ /home/data/www/tts.rethinkos.com/
@@ -79,10 +96,11 @@ rsync -a --delete public/ /home/data/www/tts.rethinkos.com/
 For the current `nginx-proxy-manager` + `static-server` deployment, route
 `tts.rethinkos.com` like this:
 
-- `/`, `/app.js`, `/styles.css`, and `/voxout.config.json` -> `static-server:80`
+- `/`, `/assets/*`, and `/voxout.config.json` -> `static-server:80`
 - `/api`, `/audio`, and `/health` -> `voxout:4177`
 
-When the API is exposed on the same origin, keep `public/voxout.config.json` as:
+When the API is exposed on the same origin, keep
+`frontend/public/voxout.config.json` as:
 
 ```json
 {

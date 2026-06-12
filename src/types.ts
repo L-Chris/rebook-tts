@@ -107,6 +107,9 @@ export interface TranscribeRequest {
   provider?: string
   url?: string
   bvid?: string
+  audioData?: string
+  mimeType?: string
+  language?: string
   format?: 'txt' | 'srt' | 'raw'
 }
 

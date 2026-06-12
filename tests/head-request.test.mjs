@@ -10,6 +10,7 @@ import { after, before, test } from 'node:test'
 let serverProcess
 let baseUrl
 let audioDir
+let serverStdout = ''
 let serverStderr = ''
 
 before(async () => {
@@ -28,6 +29,8 @@ before(async () => {
     stdio: ['ignore', 'pipe', 'pipe'],
   })
 
+  serverProcess.stdout.setEncoding('utf8')
+  serverProcess.stdout.on('data', chunk => { serverStdout += chunk })
   serverProcess.stderr.setEncoding('utf8')
   serverProcess.stderr.on('data', chunk => { serverStderr += chunk })
 
@@ -64,16 +67,19 @@ test('HEAD returns headers without a body for JSON endpoints', async () => {
 
 function waitForServer(child) {
   return new Promise((resolve, reject) => {
+    let settled = false
     const timer = setTimeout(() => reject(new Error('server did not start in time')), 5000)
 
     child.once('exit', code => {
+      if (settled) return
+      settled = true
       clearTimeout(timer)
-      reject(new Error(`server exited before ready with code ${code}: ${serverStderr}`))
+      reject(new Error(`server exited before ready with code ${code}\nstdout:\n${serverStdout}\nstderr:\n${serverStderr}`))
     })
 
-    child.stdout.setEncoding('utf8')
     child.stdout.on('data', chunk => {
       if (chunk.includes('voxout listening')) {
+        settled = true
         clearTimeout(timer)
         resolve()
       }

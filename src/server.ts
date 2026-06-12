@@ -198,9 +198,14 @@ function normalizeTranscribeInput(input: unknown): TranscribeRequest {
   const request: TranscribeRequest = {
     url: typeof value.url === 'string' ? value.url : undefined,
     bvid: typeof value.bvid === 'string' ? value.bvid : undefined,
+    audioData: typeof value.audioData === 'string' ? value.audioData : undefined,
+    mimeType: typeof value.mimeType === 'string' ? value.mimeType : undefined,
+    language: typeof value.language === 'string' ? value.language : undefined,
     format: value.format === 'srt' || value.format === 'raw' ? value.format : 'txt',
   }
-  if (!request.url && !request.bvid) throw new Error('input.url or input.bvid is required for transcribe')
+  if (!request.url && !request.bvid && !request.audioData) {
+    throw new Error('input.url, input.bvid, or input.audioData is required for transcribe')
+  }
   return request
 }
 

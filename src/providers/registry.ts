@@ -50,7 +50,9 @@ export function listAsrProviders(): AsrProvider[] {
 }
 
 export function listProviderDefinitions(configs = new Map<string, ProviderRuntimeConfig>()): ProviderDefinition[] {
-  const providers = [...ttsProviders.values(), ...asrProviders.values()]
+  const providers = [...new Map(
+    [...ttsProviders.values(), ...asrProviders.values()].map(provider => [provider.id, provider]),
+  ).values()]
   return providers.map(provider => {
     const config = configs.get(provider.id) ?? { enabled: true, config: {}, secrets: {} }
     return {
@@ -78,7 +80,9 @@ function hasConfiguredSecrets(secrets: ProviderRuntimeConfig['secrets']): boolea
 
 registerTtsProvider(new MockTtsProvider())
 registerTtsProvider(new EdgeTtsProvider())
-registerTtsProvider(new MimoTtsProvider())
+const mimoProvider = new MimoTtsProvider()
+registerTtsProvider(mimoProvider)
 registerTtsProvider(new ElevenLabsSoundEffectProvider())
 registerAsrProvider(new MockAsrProvider())
+registerAsrProvider(mimoProvider)
 registerAsrProvider(new BilibiliAsrProvider())

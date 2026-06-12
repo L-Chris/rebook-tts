@@ -1,7 +1,16 @@
-import type { ProviderContext, SynthesizeRequest, TtsProvider, TtsVoice } from '../types.js'
+import type {
+  AsrProvider,
+  ProviderContext,
+  SynthesizeRequest,
+  TranscribeRequest,
+  TranscribeResult,
+  TtsProvider,
+  TtsVoice,
+} from '../types.js'
 
 const DEFAULT_BASE_URL = 'https://api.xiaomimimo.com/v1'
 const DEFAULT_TTS_MODEL = 'mimo-v2.5-tts'
+const DEFAULT_ASR_MODEL = 'mimo-v2.5-asr'
 const DEFAULT_VOICE_DESIGN_MODEL = 'mimo-v2.5-tts-voicedesign'
 const DEFAULT_VOICE_CLONE_MODEL = 'mimo-v2.5-tts-voiceclone'
 const DEFAULT_VOICE = 'mimo_default'
@@ -11,6 +20,7 @@ const DEFAULT_VOICE_SAMPLE_TEXT = '你好，我会用这个声音为角色说话
 interface MimoCompletionResponse {
   choices?: Array<{
     message?: {
+      content?: string
       audio?: {
         data?: string
         transcript?: string
@@ -22,14 +32,15 @@ interface MimoCompletionResponse {
   }
 }
 
-export class MimoTtsProvider implements TtsProvider {
+export class MimoTtsProvider implements TtsProvider, AsrProvider {
   readonly id = 'mimo'
-  readonly name = 'Xiaomi MiMo TTS'
-  readonly capabilities = { tts: true, voiceDesign: true }
+  readonly name = 'Xiaomi MiMo'
+  readonly capabilities = { tts: true, asr: true, voiceDesign: true }
   readonly fields = [
     { key: 'apiKey', label: 'API Key', type: 'password' as const, secret: true },
     { key: 'baseUrl', label: 'Base URL', type: 'url' as const, placeholder: DEFAULT_BASE_URL },
     { key: 'ttsModel', label: 'TTS Model', type: 'text' as const, placeholder: DEFAULT_TTS_MODEL },
+    { key: 'asrModel', label: 'ASR Model', type: 'text' as const, placeholder: DEFAULT_ASR_MODEL },
     { key: 'voiceDesignModel', label: 'Voice Design Model', type: 'text' as const, placeholder: DEFAULT_VOICE_DESIGN_MODEL },
     { key: 'voiceCloneModel', label: 'Voice Clone Model', type: 'text' as const, placeholder: DEFAULT_VOICE_CLONE_MODEL },
     { key: 'format', label: 'Output Format', type: 'text' as const, placeholder: DEFAULT_FORMAT },
@@ -73,6 +84,40 @@ export class MimoTtsProvider implements TtsProvider {
       audio,
       mimeType: getMimeType(format),
       durationMs: 0,
+    }
+  }
+
+  async transcribe(request: TranscribeRequest, context: ProviderContext = {}): Promise<TranscribeResult> {
+    const apiKey = getSecretString(context, 'apiKey')
+    if (!apiKey) throw new Error('mimo apiKey is required in provider settings.')
+
+    const audioData = await resolveAudioDataUrl(request, context)
+    const response = await postMimoCompletion(apiKey, {
+      model: getConfigString(context, 'asrModel') ?? DEFAULT_ASR_MODEL,
+      messages: [
+        {
+          role: 'user',
+          content: [
+            {
+              type: 'input_audio',
+              input_audio: {
+                data: audioData,
+              },
+            },
+          ],
+        },
+      ],
+      asr_options: {
+        language: request.language?.trim() || 'auto',
+      },
+    }, context)
+    const text = response.choices?.[0]?.message?.content?.trim()
+    if (!text) throw new Error('MiMo ASR response did not include transcribed text.')
+    return {
+      provider: this.id,
+      format: request.format ?? 'txt',
+      text,
+      raw: request.format === 'raw' ? response : undefined,
     }
   }
 
@@ -162,7 +207,7 @@ async function postMimoCompletion(apiKey: string, body: unknown, context: Provid
       payload = {}
     }
     if (!response.ok) {
-      const message = (payload.error?.message ?? text.slice(0, 500)) || `MiMo TTS request failed: ${response.status}`
+      const message = (payload.error?.message ?? text.slice(0, 500)) || `MiMo request failed: ${response.status}`
       throw new Error(message)
     }
     return payload
@@ -219,4 +264,24 @@ function getTimeoutMs(context: ProviderContext): number {
 
 function trimTrailingSlash(value: string): string {
   return value.replace(/\/+$/, '')
+}
+
+async function resolveAudioDataUrl(request: TranscribeRequest, context: ProviderContext): Promise<string> {
+  if (request.audioData?.trim()) {
+    const value = request.audioData.trim()
+    if (value.startsWith('data:')) return value
+    return `data:${normalizeMimeType(request.mimeType)};base64,${value}`
+  }
+  if (!request.url) throw new Error('MiMo ASR requires input.audioData or input.url.')
+  const response = await fetch(request.url, { signal: AbortSignal.timeout(getTimeoutMs(context)) })
+  if (!response.ok) throw new Error(`Failed to download audio for MiMo ASR: ${response.status}`)
+  const audio = Buffer.from(await response.arrayBuffer())
+  if (audio.length === 0) throw new Error('Downloaded audio for MiMo ASR was empty.')
+  const mimeType = normalizeMimeType(request.mimeType ?? response.headers.get('content-type') ?? undefined)
+  return `data:${mimeType};base64,${audio.toString('base64')}`
+}
+
+function normalizeMimeType(value?: string): string {
+  const mimeType = value?.split(';')[0]?.trim()
+  return mimeType || 'audio/mpeg'
 }

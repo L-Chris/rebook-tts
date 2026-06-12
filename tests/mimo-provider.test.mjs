@@ -73,12 +73,72 @@ test('Mimo provider exposes voice design capability metadata', async () => {
   const provider = new MimoTtsProvider()
   const voices = await provider.listVoices()
   assert.equal(provider.capabilities.voiceDesign, true)
+  assert.equal(provider.capabilities.asr, true)
   assert.ok(voices.length > 0)
   assert.equal(voices[0].capabilities.voiceDesign, true)
 
   const providers = listProviderDefinitions()
-  const mimo = providers.find(item => item.id === 'mimo')
+  const mimoProviders = providers.filter(item => item.id === 'mimo')
+  assert.equal(mimoProviders.length, 1)
+  const [mimo] = mimoProviders
   assert.equal(mimo.capabilities.voiceDesign, true)
+  assert.equal(mimo.capabilities.asr, true)
+})
+
+test('Mimo provider sends speech recognition requests', async () => {
+  const captured = []
+  globalThis.fetch = async (url, init) => {
+    captured.push({
+      url,
+      headers: init.headers,
+      body: JSON.parse(init.body),
+    })
+    return new Response(JSON.stringify({
+      choices: [{
+        message: {
+          content: '识别结果',
+          role: 'assistant',
+          audio: null,
+        },
+      }],
+    }), {
+      status: 200,
+      headers: { 'content-type': 'application/json' },
+    })
+  }
+
+  const provider = new MimoTtsProvider()
+  const result = await provider.transcribe({
+    audioData: Buffer.from('audio').toString('base64'),
+    mimeType: 'audio/wav',
+    language: 'zh',
+    format: 'raw',
+  }, {
+    config: {},
+    secrets: { apiKey: 'test-key' },
+  })
+
+  assert.equal(captured.length, 1)
+  assert.equal(captured[0].url, 'https://api.xiaomimimo.com/v1/chat/completions')
+  assert.equal(captured[0].headers['api-key'], 'test-key')
+  assert.equal(captured[0].body.model, 'mimo-v2.5-asr')
+  assert.deepEqual(captured[0].body.messages, [
+    {
+      role: 'user',
+      content: [
+        {
+          type: 'input_audio',
+          input_audio: {
+            data: `data:audio/wav;base64,${Buffer.from('audio').toString('base64')}`,
+          },
+        },
+      ],
+    },
+  ])
+  assert.deepEqual(captured[0].body.asr_options, { language: 'zh' })
+  assert.equal(result.provider, 'mimo')
+  assert.equal(result.text, '识别结果')
+  assert.equal(result.raw.choices[0].message.content, '识别结果')
 })
 
 async function synthesizeWithMockedFetch({ providerRequest, returnAllCaptures = false }) {
