@@ -717,7 +717,7 @@ function AudioSourceControl({
   inputId,
   onFileChange,
   onFormChange,
-  placeholder = 'https://example.com/audio.m4a, BV1..., data:audio/wav;base64,...',
+  placeholder = 'https://example.com/audio.m4a, data:audio/wav;base64,...',
 }) {
   const fileId = `${inputId}-file`
   return (
@@ -1091,8 +1091,6 @@ function defaultTranscriptionForm(provider) {
 function appendAudioSource(form, source) {
   if (/^https?:\/\//i.test(source)) {
     form.set('url', source)
-  } else if (/^BV[\dA-Za-z]+$/.test(source)) {
-    form.set('bvid', source)
   } else {
     form.set('audioData', source)
   }

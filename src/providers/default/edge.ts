@@ -2,8 +2,8 @@ import { mkdtemp, readFile, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { EdgeTTS } from 'node-edge-tts'
-import { DEFAULT_PROVIDER_TIMEOUT_MS } from '../timeout.js'
-import type { ProviderContext, SynthesizeRequest, TtsProvider, TtsVoice } from '../types.js'
+import { DEFAULT_PROVIDER_TIMEOUT_MS } from '../../timeout.js'
+import type { ProviderContext, SynthesizeRequest, TtsProvider, TtsVoice } from '../../types.js'
 
 const DEFAULT_VOICE = 'zh-CN-XiaoyiNeural'
 const DEFAULT_LANG = 'zh-CN'
@@ -22,8 +22,8 @@ interface EdgeVoicePayload {
 }
 
 export class EdgeTtsProvider implements TtsProvider {
-  readonly id = 'edge'
-  readonly name = 'Microsoft Edge TTS'
+  readonly id: string
+  readonly name: string
   readonly capabilities = { tts: true }
   readonly fields = [
     { key: 'voicesUrl', label: 'Voice Catalog URL', type: 'url' as const, placeholder: EDGE_VOICES_URL },
@@ -32,11 +32,16 @@ export class EdgeTtsProvider implements TtsProvider {
   ]
   private voiceCache: { expiresAt: number, voices: TtsVoice[] } | null = null
 
+  constructor(id = 'edge', name = 'Microsoft Edge TTS') {
+    this.id = id
+    this.name = name
+  }
+
   async listVoices(context: ProviderContext = {}): Promise<TtsVoice[]> {
     const now = Date.now()
     if (this.voiceCache && this.voiceCache.expiresAt > now) return this.voiceCache.voices
 
-    const voices = await this.fetchVoices(context).catch(() => FALLBACK_EDGE_VOICES)
+    const voices = await this.fetchVoices(context).catch(() => fallbackEdgeVoices(this.id))
     const cacheMs = Math.max(0, getConfigNumber(context, 'voicesCacheMs') ?? DEFAULT_VOICE_CACHE_MS)
     if (cacheMs > 0) {
       this.voiceCache = {
@@ -66,7 +71,7 @@ export class EdgeTtsProvider implements TtsProvider {
         .sort((a, b) => a.locale === b.locale
           ? a.id.localeCompare(b.id)
           : (a.locale ?? '').localeCompare(b.locale ?? ''))
-      return voices.length ? voices : FALLBACK_EDGE_VOICES
+      return voices.length ? voices : fallbackEdgeVoices(this.id)
     } finally {
       clearTimeout(timer)
     }
@@ -120,14 +125,18 @@ function getConfigNumber(context: ProviderContext, key: string): number | undefi
   return Number.isFinite(numberValue) && numberValue > 0 ? numberValue : undefined
 }
 
-const FALLBACK_EDGE_VOICES: TtsVoice[] = [
-  { id: 'zh-CN-XiaoyiNeural', name: 'Xiaoyi', locale: 'zh-CN', gender: 'Female', provider: 'edge' },
-  { id: 'zh-CN-YunxiNeural', name: 'Yunxi', locale: 'zh-CN', gender: 'Male', provider: 'edge' },
-  { id: 'zh-CN-YunjianNeural', name: 'Yunjian', locale: 'zh-CN', gender: 'Male', provider: 'edge' },
-  { id: 'zh-CN-XiaoxiaoNeural', name: 'Xiaoxiao', locale: 'zh-CN', gender: 'Female', provider: 'edge' },
-  { id: 'en-US-AriaNeural', name: 'Aria', locale: 'en-US', gender: 'Female', provider: 'edge' },
-  { id: 'en-US-GuyNeural', name: 'Guy', locale: 'en-US', gender: 'Male', provider: 'edge' },
+const FALLBACK_EDGE_VOICES = [
+  { id: 'zh-CN-XiaoyiNeural', name: 'Xiaoyi', locale: 'zh-CN', gender: 'Female' },
+  { id: 'zh-CN-YunxiNeural', name: 'Yunxi', locale: 'zh-CN', gender: 'Male' },
+  { id: 'zh-CN-YunjianNeural', name: 'Yunjian', locale: 'zh-CN', gender: 'Male' },
+  { id: 'zh-CN-XiaoxiaoNeural', name: 'Xiaoxiao', locale: 'zh-CN', gender: 'Female' },
+  { id: 'en-US-AriaNeural', name: 'Aria', locale: 'en-US', gender: 'Female' },
+  { id: 'en-US-GuyNeural', name: 'Guy', locale: 'en-US', gender: 'Male' },
 ]
+
+function fallbackEdgeVoices(provider: string): TtsVoice[] {
+  return FALLBACK_EDGE_VOICES.map(voice => ({ ...voice, provider }))
+}
 
 function normalizeEdgeVoice(voice: EdgeVoicePayload, provider: string): TtsVoice | null {
   if (!voice.ShortName) return null

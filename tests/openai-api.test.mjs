@@ -60,7 +60,12 @@ test('GET /v1/models returns OpenAI-style model objects', async () => {
   assert.equal(openai.capabilities.tts, true)
   assert.equal(openai.capabilities.asr, true)
   assert.equal(openai.capabilities.voiceClone, true)
+  const defaultProvider = payload.data.find(model => model.id === 'default')
+  assert.equal(defaultProvider.capabilities.tts, true)
+  assert.equal(defaultProvider.capabilities.asr, true)
   const modelIds = payload.data.map(model => model.id)
+  assert.ok(!modelIds.includes('edge'))
+  assert.ok(!modelIds.includes('bilibili-asr'))
   assert.ok(!modelIds.includes('mock'))
   assert.ok(!modelIds.includes('mock-asr'))
 })
@@ -76,7 +81,7 @@ test('GET /api/providers does not expose internal test providers', async () => {
 })
 
 test('GET /api/providers/:id/voices returns provider voices', async () => {
-  const response = await fetch(`${baseUrl}/api/providers/edge/voices`)
+  const response = await fetch(`${baseUrl}/api/providers/default/voices`)
   const payload = await response.json()
 
   assert.equal(response.status, 200)
@@ -195,7 +200,7 @@ test('POST /v1/audio/speech rejects unsupported voice_id providers', async () =>
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({
-      model: 'edge',
+      model: 'default',
       input: 'hello',
       voice_id: 'not-supported',
     }),

@@ -9,11 +9,10 @@ into the `ProviderConfig` table.
 
 ## Providers
 
-- `edge`: Microsoft Edge online TTS.
+- `default`: Microsoft Edge online TTS plus direct Bilibili/Bcut URL ASR.
 - `openai`: OpenAI TTS, ASR, and custom voice cloning.
 - `mimo`: Xiaomi MiMo TTS with preset voices, voice design, and ASR.
 - `elevenlabs`: ElevenLabs TTS, ASR, sound effects, isolation, voice design, and voice cloning.
-- `bilibili-asr`: ASR through the `bilibili-mcp` Flask API.
 
 ## API
 
@@ -27,8 +26,8 @@ OpenAI-compatible audio API:
 - `POST /v1/audio/voices`
 - `POST /v1/audio/transcriptions`
 
-The OpenAI-style `model` field maps to a voxout provider id such as `edge`,
-`openai`, `mimo`, `elevenlabs`, or `bilibili-asr`.
+The OpenAI-style `model` field maps to a voxout provider id such as `default`,
+`openai`, `mimo`, or `elevenlabs`.
 `/v1/audio/speech` also accepts `voice_id` for providers that support stored
 voice records, currently `openai`, `elevenlabs`, and `mimo`.
 
@@ -57,7 +56,7 @@ Speech generation:
 curl -X POST http://127.0.0.1:4177/v1/audio/speech \
   -H 'content-type: application/json' \
   --output speech.mp3 \
-  --data '{"model":"edge","input":"你好，voxout。","voice":"zh-CN-XiaoyiNeural","response_format":"mp3"}'
+  --data '{"model":"default","input":"你好，voxout。","voice":"zh-CN-XiaoyiNeural","response_format":"mp3"}'
 ```
 
 Sound effect generation:
@@ -111,7 +110,7 @@ providers:
 
 ```bash
 curl -X POST http://127.0.0.1:4177/v1/audio/transcriptions \
-  -F model=bilibili-asr \
+  -F model=default \
   -F response_format=text \
   -F url=https://example.com/audio.m4a
 ```

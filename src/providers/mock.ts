@@ -1,9 +1,11 @@
 import type {
+  AsrProvider,
   AudioIsolationProvider,
   AudioIsolationRequest,
   SoundEffectProvider,
   SoundEffectRequest,
   SynthesizeRequest,
+  TranscribeRequest,
   TtsProvider,
   TtsVoice,
   VoiceCloneProvider,
@@ -79,6 +81,21 @@ export class MockTtsProvider implements TtsProvider, SoundEffectProvider, AudioI
         previewMimeType: request.mimeType ?? 'audio/wav',
         metadata: {},
       },
+    }
+  }
+}
+
+export class MockAsrProvider implements AsrProvider {
+  readonly id = 'mock-asr'
+  readonly name = 'Mock ASR Provider'
+  readonly capabilities = { asr: true }
+
+  async transcribe(request: TranscribeRequest) {
+    const target = request.url ?? (request.audioData ? 'inline audio' : 'unknown audio')
+    return {
+      provider: this.id,
+      format: request.format ?? 'txt',
+      text: `Mock transcript for ${target}`,
     }
   }
 }

@@ -1,9 +1,7 @@
-import { EdgeTtsProvider } from './edge.js'
 import { ElevenLabsProvider } from './elevenlabs.js'
-import { BilibiliAsrProvider } from './bilibili-asr.js'
+import { DefaultProvider } from './default/index.js'
 import { MimoTtsProvider } from './mimo.js'
-import { MockAsrProvider } from './mock-asr.js'
-import { MockTtsProvider } from './mock.js'
+import { MockAsrProvider, MockTtsProvider } from './mock.js'
 import { OpenAiProvider } from './openai.js'
 import type {
   AsrProvider,
@@ -201,7 +199,9 @@ const openAiProvider = new OpenAiProvider()
 registerTtsProvider(openAiProvider)
 registerAsrProvider(openAiProvider)
 registerVoiceCloneProvider(openAiProvider)
-registerTtsProvider(new EdgeTtsProvider())
+const defaultProvider = new DefaultProvider()
+registerTtsProvider(defaultProvider)
+registerAsrProvider(defaultProvider)
 const mimoProvider = new MimoTtsProvider()
 registerTtsProvider(mimoProvider)
 registerVoiceCloneProvider(mimoProvider)
@@ -215,4 +215,3 @@ registerVoiceCloneProvider(elevenLabsProvider)
 registerAsrProvider(new MockAsrProvider())
 registerAsrProvider(mimoProvider)
 registerVoiceDesignProvider(mimoProvider)
-registerAsrProvider(new BilibiliAsrProvider())

@@ -288,7 +288,6 @@ async function createOpenAiTranscription(req: IncomingMessage, res: ServerRespon
   const request: TranscribeRequest = {
     model: form.fields.model_id || form.fields.asr_model || form.fields.asrModel,
     url: form.fields.url,
-    bvid: form.fields.bvid,
     audioData: form.fields.audioData,
     mimeType: form.fields.mimeType,
     language: form.fields.language,
@@ -298,8 +297,8 @@ async function createOpenAiTranscription(req: IncomingMessage, res: ServerRespon
     request.audioData = `data:${normalizeMimeType(file.contentType)};base64,${file.data.toString('base64')}`
     request.mimeType = normalizeMimeType(file.contentType)
   }
-  if (!request.url && !request.bvid && !request.audioData) {
-    throw new Error('file, url, bvid, or audioData is required')
+  if (!request.url && !request.audioData) {
+    throw new Error('file, url, or audioData is required')
   }
 
   const timeoutMs = getProviderTimeoutMs(context)

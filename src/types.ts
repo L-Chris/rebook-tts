@@ -103,7 +103,6 @@ export interface TranscribeRequest {
   provider?: string
   model?: string
   url?: string
-  bvid?: string
   audioData?: string
   mimeType?: string
   language?: string
