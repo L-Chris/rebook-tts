@@ -154,8 +154,11 @@ test('OpenAI provider sends speech-to-text requests', async () => {
   const provider = new OpenAiProvider()
   const result = await provider.transcribe({
     model: 'whisper-1',
-    audioData: `data:audio/wav;base64,${Buffer.alloc(256, 1).toString('base64')}`,
-    mimeType: 'audio/wav',
+    file: {
+      data: Buffer.alloc(256, 1),
+      mimeType: 'audio/wav',
+      fileName: 'sample.wav',
+    },
     language: 'en',
     prompt: 'Technical vocabulary appears in this recording.',
     format: 'raw',

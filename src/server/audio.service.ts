@@ -227,13 +227,16 @@ async function handleOpenAiTranscription(req: IncomingMessage, res: ServerRespon
   ensureEnabled(provider.id, context)
 
   const file = form.files.file
+  if (!file) throw new Error('file is required')
   const responseFormat = normalizeTranscriptionResponseFormat(form.fields.response_format)
   const providerResponseFormat = normalizeProviderTranscriptionResponseFormat(provider.id, responseFormat)
   const request: TranscribeRequest = {
     model: target.model,
-    url: form.fields.url,
-    audioData: form.fields.audioData,
-    mimeType: form.fields.mimeType,
+    file: {
+      data: file.data,
+      mimeType: normalizeMimeType(file.contentType),
+      fileName: file.fileName,
+    },
     language: form.fields.language,
     prompt: form.fields.prompt,
     responseFormat: providerResponseFormat,
@@ -246,13 +249,6 @@ async function handleOpenAiTranscription(req: IncomingMessage, res: ServerRespon
           : providerResponseFormat === 'diarized_json'
             ? 'diarized_json'
             : 'txt',
-  }
-  if (file) {
-    request.audioData = `data:${normalizeMimeType(file.contentType)};base64,${file.data.toString('base64')}`
-    request.mimeType = normalizeMimeType(file.contentType)
-  }
-  if (!request.url && !request.audioData) {
-    throw new Error('file, url, or audioData is required')
   }
 
   const timeoutMs = getProviderTimeoutMs(context)

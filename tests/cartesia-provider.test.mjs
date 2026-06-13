@@ -107,7 +107,11 @@ test('Cartesia provider sends speech-to-text requests', async () => {
   const provider = new CartesiaProvider()
   const result = await provider.transcribe({
     model: 'ink-whisper',
-    audioData: `data:audio/wav;base64,${Buffer.alloc(256, 1).toString('base64')}`,
+    file: {
+      data: Buffer.alloc(256, 1),
+      mimeType: 'audio/wav',
+      fileName: 'sample.wav',
+    },
     language: 'en-US',
     format: 'raw',
   }, {

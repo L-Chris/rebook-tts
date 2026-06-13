@@ -190,8 +190,11 @@ test('Mimo provider sends speech recognition requests', async () => {
   const provider = new MimoTtsProvider()
   const result = await provider.transcribe({
     model: 'mimo-custom-asr',
-    audioData: Buffer.from('audio').toString('base64'),
-    mimeType: 'audio/wav',
+    file: {
+      data: Buffer.from('audio'),
+      mimeType: 'audio/wav',
+      fileName: 'sample.wav',
+    },
     language: 'zh',
     format: 'raw',
   }, {

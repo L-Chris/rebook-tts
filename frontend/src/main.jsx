@@ -223,13 +223,8 @@ function App() {
     form.set('response_format', transcriptionForm.responseFormat)
     if (transcriptionForm.model.trim()) form.set('model', transcriptionForm.model.trim())
     if (transcriptionForm.language.trim()) form.set('language', transcriptionForm.language.trim())
-    if (transcriptionFile) {
-      form.set('file', transcriptionFile)
-    } else if (transcriptionForm.audioSource.trim()) {
-      appendAudioSource(form, transcriptionForm.audioSource.trim())
-    } else {
-      throw new Error('Choose an audio file or enter an audio source.')
-    }
+    if (!transcriptionFile) throw new Error('Choose an audio file.')
+    form.set('file', transcriptionFile)
 
     const response = await fetch(apiUrl('/v1/audio/transcriptions', apiBaseUrl), {
       method: 'POST',
@@ -766,12 +761,10 @@ function TranscriptionTestForm({ file, form, modelField, onFileChange, onFormCha
   const modelListId = modelField?.options?.length ? 'transcription-model-options' : undefined
   return (
     <div className="grid gap-3 md:grid-cols-2">
-      <AudioSourceControl
+      <AudioFileControl
         file={file}
-        form={form}
         inputId="transcription-audio-source"
         onFileChange={onFileChange}
-        onFormChange={onFormChange}
       />
       {modelField ? (
         <label className="grid gap-1.5 text-sm font-semibold">
@@ -860,6 +853,32 @@ function AudioSourceControl({
             }}
           />
         </div>
+      </div>
+    </div>
+  )
+}
+
+function AudioFileControl({ file, inputId, onFileChange }) {
+  const fileId = `${inputId}-file`
+  return (
+    <div className="grid gap-1.5 text-sm font-semibold md:col-span-2">
+      <label htmlFor={fileId}>Audio file</label>
+      <div className="audio-source-actions">
+        <span className="truncate text-sm font-normal text-slate-500">
+          {file ? file.name : 'Choose an audio file'}
+        </span>
+        <label className="btn-secondary shrink-0 cursor-pointer" htmlFor={fileId}>
+          Choose file
+        </label>
+        <input
+          className="sr-only"
+          id={fileId}
+          type="file"
+          accept="audio/*,video/mp4,video/webm"
+          onChange={event => {
+            onFileChange(event.target.files?.[0] ?? null)
+          }}
+        />
       </div>
     </div>
   )
@@ -1174,7 +1193,6 @@ function defaultCloneForm() {
 
 function defaultTranscriptionForm(provider) {
   return {
-    audioSource: '',
     model: getProviderField(provider, 'asrModel') ? provider?.config?.asrModel ?? '' : '',
     language: 'auto',
     responseFormat: 'json',

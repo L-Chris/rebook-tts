@@ -121,10 +121,9 @@ export class CartesiaProvider implements TtsProvider, AsrProvider, VoiceClonePro
 
   async transcribe(request: TranscribeRequest, context: ProviderContext = {}): Promise<TranscribeResult> {
     const apiKey = getApiKey(context)
-    const audio = await resolveAudio(request)
     const form = new FormData()
     form.set('model', request.model ?? getConfigString(context, 'asrModel') ?? DEFAULT_ASR_MODEL)
-    form.set('file', new Blob([audio.data], { type: audio.mimeType }), audio.fileName)
+    form.set('file', new Blob([request.file.data], { type: request.file.mimeType }), request.file.fileName)
     form.set('timestamp_granularities[]', 'word')
     const language = normalizeLanguage(request.language)
     if (language) form.set('language', language)
@@ -295,21 +294,6 @@ function normalizeSpeed(value: number | undefined): number | undefined {
   return Number.isFinite(value) && value > 0 ? value : undefined
 }
 
-async function resolveAudio(request: TranscribeRequest): Promise<{ data: Buffer, mimeType: string, fileName: string }> {
-  if (request.audioData?.trim()) return parseAudioData(request.audioData.trim(), request.mimeType)
-  if (request.url?.trim()) {
-    const response = await fetch(request.url.trim())
-    if (!response.ok) throw new Error(`Failed to download audio for Cartesia transcription: ${response.status}`)
-    const mimeType = response.headers.get('content-type')?.split(';')[0]?.trim() || request.mimeType || 'audio/mpeg'
-    return {
-      data: Buffer.from(await response.arrayBuffer()),
-      mimeType,
-      fileName: getFileNameFromUrl(request.url.trim(), mimeType),
-    }
-  }
-  throw new Error('Cartesia ASR requires file, url, or audioData.')
-}
-
 function parseAudioData(value: string, mimeType?: string): { data: Buffer, mimeType: string, fileName: string } {
   const match = /^data:([^;,]+)?;base64,(.*)$/is.exec(value)
   const resolvedMimeType = match?.[1] || mimeType || 'audio/mpeg'
@@ -326,14 +310,6 @@ function getAudioFileName(mimeType: string): string {
   if (mimeType.includes('ogg')) return 'audio.ogg'
   if (mimeType.includes('webm')) return 'audio.webm'
   return 'audio.mp3'
-}
-
-function getFileNameFromUrl(value: string, mimeType: string): string {
-  try {
-    return new URL(value).pathname.split('/').filter(Boolean).pop() || getAudioFileName(mimeType)
-  } catch {
-    return getAudioFileName(mimeType)
-  }
 }
 
 function normalizeWords(words: CartesiaTranscriptPayload['words']) {

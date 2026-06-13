@@ -1,6 +1,6 @@
 # Voxout API Field Mapping
 
-本文档基于当前代码实现和各 provider 官方文档整理。`provider` 是 Voxout 的路由扩展字段，不属于 OpenAI 官方 audio API。表格中的 `Default` 表示默认 provider：TTS 使用 Edge TTS，ASR 使用 Bilibili/BCUT ASR。
+本文档基于当前代码实现和各 provider 官方文档整理。`provider` 是 Voxout 的路由扩展字段，不属于 OpenAI 官方 audio API。表格中的 `Default` 表示默认 provider：当前仅提供 Edge TTS。
 
 ## 资料来源
 
@@ -50,21 +50,18 @@
 
 ## POST `/v1/audio/transcriptions`
 
-语音转文字。请求体是 `multipart/form-data`。当前支持 `file`、`url` 或 `audioData` 三种输入。
+语音转文字。请求体是 `multipart/form-data`。为贴近 OpenAI 规范，当前只接受 `file` 输入；`url`、`audioData`、`mimeType` 不再作为该接口入参。
 
 | 实际传参 | OpenAI 规范 | OpenAI | ElevenLabs | Cartesia | Gradium | MiMo | Default | 接受的透传参数 |
 |---|---|---|---|---|---|---|---|---|
-| `file`，可选 file | 官方必填 `file`，支持常见音频格式 | `file` | `file` | `file` | request body bytes | 转 data URL 放入 `input_audio.data` | 不支持 | 无 |
-| `url`，可选 string | 无 | Voxout 先下载，再作为 `file` 上传 | `source_url`，直接下发 | Voxout 先下载，再作为 `file` 上传 | Voxout 先下载，再作为 body bytes 上传 | Voxout 先下载，再转 data URL | `resource` | 无 |
-| `audioData`，可选 base64 或 data URL | 无 | 转 `file` | 转 `file` | 转 `file` | 转 body bytes | 转 `input_audio.data` | 不支持 | 无 |
-| `mimeType`，可选 string | 无 | 上传 file MIME | 上传 file MIME | 上传 file MIME | 推断 `input_format` | data URL MIME | 不使用 | 无 |
-| `model`，必填，除非 `provider` 显式指定 | 官方 ASR model | `model` | `model_id`，默认 `asrModel` 或 `scribe_v2` | `model`，默认 `asrModel` 或 `ink-whisper` | query `model`，默认 `asrModel` 或 `default` | `model`，默认 `asrModel` 或 `mimo-v2.5-asr` | 固定 `model_id=8` | 无 |
-| `provider`，可选 | 无 | 只用于路由；省略时 OpenAI ASR model 或未知 model 路由到 OpenAI | 只用于路由 | 只用于路由 | 只用于路由 | 只用于路由 | 只用于路由 | 无 |
-| `language`，可选 string | ISO-639-1 | `language` | `language_code` | `language`，裁剪地区码 | `json_config={"language":...}`，裁剪地区码 | `asr_options.language`，默认 `auto` | 忽略 | 无 |
-| `prompt`，可选 string | 引导转写风格；部分模型不支持 | `prompt` | 忽略 | 忽略 | 忽略 | 忽略 | 忽略 | 无 |
-| `response_format`，可选 | `json`、`text`、`srt`、`verbose_json`、`vtt`、`diarized_json` | 原样传给 OpenAI | 非 `json/text` 会让 Voxout 请求 verbose 语义并本地格式化 | 同 ElevenLabs；Cartesia 固定请求 word timestamps | 同 ElevenLabs；结果由 Voxout 解析 | 同 ElevenLabs；当前无 segments | 同 ElevenLabs；BCUT raw segments 可转文本/SRT | 无 |
-| 官方未实现字段 | `chunking_strategy`、`include`、`known_speaker_names`、`known_speaker_references`、`stream`、`temperature`、`timestamp_granularities[]` | 当前不读取 | 当前不读取 | 当前不读取；但固定发送 `timestamp_granularities[]=word` | 当前不读取 | 当前不读取 | 当前不读取 | 无 |
-| 响应 | `json -> { text }`；`text/srt/vtt` 返回文本；详细格式返回 JSON | 同官方；由 Voxout 包装最终响应 | Voxout 输出 `{ text }` / text / `{ text, segments, raw }` | 同 ElevenLabs | 同 ElevenLabs | 同 ElevenLabs | 同 ElevenLabs | 不直接返回未整理 provider 原始响应，除 verbose/diarized 中的 `raw` |
+| `file`，必填 file | 官方必填 `file`，支持常见音频格式 | `file` | `file` | `file` | request body bytes | 内部转 data URL 放入 `input_audio.data` | 不支持 | 无 |
+| `model`，必填，除非 `provider` 显式指定 | 官方 ASR model | `model` | `model_id`，默认 `asrModel` 或 `scribe_v2` | `model`，默认 `asrModel` 或 `ink-whisper` | query `model`，默认 `asrModel` 或 `default` | `model`，默认 `asrModel` 或 `mimo-v2.5-asr` | 不支持 | 无 |
+| `provider`，可选 | 无 | 只用于路由；省略时 OpenAI ASR model 或未知 model 路由到 OpenAI | 只用于路由 | 只用于路由 | 只用于路由 | 只用于路由 | 不支持 | 无 |
+| `language`，可选 string | ISO-639-1 | `language` | `language_code` | `language`，裁剪地区码 | `json_config={"language":...}`，裁剪地区码 | `asr_options.language`，默认 `auto` | 不支持 | 无 |
+| `prompt`，可选 string | 引导转写风格；部分模型不支持 | `prompt` | 忽略 | 忽略 | 忽略 | 忽略 | 不支持 | 无 |
+| `response_format`，可选 | `json`、`text`、`srt`、`verbose_json`、`vtt`、`diarized_json` | 原样传给 OpenAI | 非 `json/text` 会让 Voxout 请求 verbose 语义并本地格式化 | 同 ElevenLabs；Cartesia 固定请求 word timestamps | 同 ElevenLabs；结果由 Voxout 解析 | 同 ElevenLabs；当前无 segments | 不支持 | 无 |
+| 官方未实现字段 | `chunking_strategy`、`include`、`known_speaker_names`、`known_speaker_references`、`stream`、`temperature`、`timestamp_granularities[]` | 当前不读取 | 当前不读取 | 当前不读取；但固定发送 `timestamp_granularities[]=word` | 当前不读取 | 当前不读取 | 不支持 | 无 |
+| 响应 | `json -> { text }`；`text/srt/vtt` 返回文本；详细格式返回 JSON | 同官方；由 Voxout 包装最终响应 | Voxout 输出 `{ text }` / text / `{ text, segments, raw }` | 同 ElevenLabs | 同 ElevenLabs | 同 ElevenLabs | 不支持 | 不直接返回未整理 provider 原始响应，除 verbose/diarized 中的 `raw` |
 
 ## POST `/v1/audio/effect`
 
@@ -130,7 +127,7 @@
 | 实际传参 | OpenAI 规范 | OpenAI | ElevenLabs | Cartesia | Gradium | MiMo | Default | 接受的透传参数 |
 |---|---|---|---|---|---|---|---|---|
 | 无 | OpenAI list models 返回 `{ object: "list", data: [...] }` | 聚合为 model object | 聚合为 model object | 聚合为 model object | 聚合为 model object | 聚合为 model object | 聚合为 model object | 无 |
-| 响应 | 官方 model object 更丰富 | `id=openai`，带 capabilities | `id=elevenlabs` | `id=cartesia` | `id=gradium` | `id=mimo` | `id=default` | 返回 `{ object: "list", data: [{ id, object, created, owned_by, capabilities }] }` |
+| 响应 | 官方 model object 更丰富 | `id=openai`，带 capabilities | `id=elevenlabs` | `id=cartesia` | `id=gradium` | `id=mimo` | `id=default`，仅 TTS capabilities | 返回 `{ object: "list", data: [{ id, object, created, owned_by, capabilities }] }` |
 
 ## GET `/api/providers`
 
@@ -162,6 +159,6 @@
 
 | 实际传参 | OpenAI 规范 | OpenAI | ElevenLabs | Cartesia | Gradium | MiMo | Default | 接受的透传参数 |
 |---|---|---|---|---|---|---|---|---|
-| Default provider | 无 | 不适用 | 不适用 | 不适用 | 不适用 | 不适用 | TTS 实际是 Edge TTS；ASR 实际是 Bilibili/BCUT ASR。当前实现基于非 OpenAI 官方、也非稳定公开官方 API 的接口或库行为。 | 无 |
+| Default provider | 无 | 不适用 | 不适用 | 不适用 | 不适用 | 不适用 | TTS 实际是 Edge TTS；不再注册 ASR capability。 | 无 |
 | OpenAI `voice` object `{ id }` | 官方支持 | 当前 Voxout 只接受 string voice；如需完全兼容官方 custom voice object，需要改 `normalizeOpenAiSpeechInput` | 不适用 | 不适用 | 不适用 | 不适用 | 不适用 | 无 |
 | OpenAI transcription streaming | 官方 `stream=true` | 当前 Voxout 不读取 `stream`，ASR 不支持 SSE 转写流 | 不适用 | 不适用 | 不适用 | 不适用 | 不适用 | 无 |

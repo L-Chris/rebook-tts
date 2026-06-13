@@ -121,8 +121,7 @@ export class GradiumProvider implements TtsProvider, AsrProvider, VoiceCloneProv
 
   async transcribe(request: TranscribeRequest, context: ProviderContext = {}): Promise<TranscribeResult> {
     const apiKey = getApiKey(context)
-    const audio = await resolveAudio(request)
-    const inputFormat = getGradiumInputFormat(audio.mimeType)
+    const inputFormat = getGradiumInputFormat(request.file.mimeType)
     const url = new URL(`${getBaseUrl(context)}/post/speech/asr`)
     url.searchParams.set('model', request.model ?? getConfigString(context, 'asrModel') ?? DEFAULT_MODEL)
     url.searchParams.set('input_format', inputFormat)
@@ -132,10 +131,10 @@ export class GradiumProvider implements TtsProvider, AsrProvider, VoiceCloneProv
     const response = await fetchWithProviderTimeout(url, {
       method: 'POST',
       headers: {
-        'content-type': audio.mimeType,
+        'content-type': request.file.mimeType,
         'x-api-key': apiKey,
       },
-      body: new Blob([audio.data], { type: audio.mimeType }),
+      body: new Blob([request.file.data], { type: request.file.mimeType }),
     }, context)
     const text = await response.text()
     if (!response.ok) throw new Error(text.slice(0, 500) || `Gradium speech-to-text request failed: ${response.status}`)
@@ -359,21 +358,6 @@ function getMimeType(format: string): string {
   return 'audio/wav'
 }
 
-async function resolveAudio(request: TranscribeRequest): Promise<{ data: Buffer, mimeType: string, fileName: string }> {
-  if (request.audioData?.trim()) return parseAudioData(request.audioData.trim(), request.mimeType)
-  if (request.url?.trim()) {
-    const response = await fetch(request.url.trim())
-    if (!response.ok) throw new Error(`Failed to download audio for Gradium transcription: ${response.status}`)
-    const mimeType = response.headers.get('content-type')?.split(';')[0]?.trim() || request.mimeType || 'audio/wav'
-    return {
-      data: Buffer.from(await response.arrayBuffer()),
-      mimeType,
-      fileName: getFileNameFromUrl(request.url.trim(), mimeType),
-    }
-  }
-  throw new Error('Gradium ASR requires file, url, or audioData.')
-}
-
 function parseAudioData(value: string, mimeType?: string): { data: Buffer, mimeType: string, fileName: string } {
   const match = /^data:([^;,]+)?;base64,(.*)$/is.exec(value)
   const resolvedMimeType = match?.[1] || mimeType || 'audio/wav'
@@ -400,14 +384,6 @@ function getAudioFileName(mimeType: string): string {
   if (mimeType.includes('opus') || mimeType.includes('ogg')) return 'audio.ogg'
   if (mimeType.includes('pcm')) return 'audio.pcm'
   return 'audio.wav'
-}
-
-function getFileNameFromUrl(value: string, mimeType: string): string {
-  try {
-    return new URL(value).pathname.split('/').filter(Boolean).pop() || getAudioFileName(mimeType)
-  } catch {
-    return getAudioFileName(mimeType)
-  }
 }
 
 function clearStreamTimer(timer: ReturnType<typeof setTimeout> | undefined): void {

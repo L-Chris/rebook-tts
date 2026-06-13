@@ -122,7 +122,7 @@ export class MimoTtsProvider implements TtsProvider, AsrProvider, VoiceDesignPro
     const apiKey = getSecretString(context, 'apiKey')
     if (!apiKey) throw new Error('mimo apiKey is required in provider settings.')
 
-    const audioData = await resolveAudioDataUrl(request, context)
+    const audioData = fileToAudioDataUrl(request.file)
     const response = await postMimoCompletion(apiKey, {
       model: request.model ?? getConfigString(context, 'asrModel') ?? DEFAULT_ASR_MODEL,
       messages: [
@@ -374,19 +374,8 @@ function getDataUrlMimeType(value: string): string | undefined {
   return /^data:([^;,]+)/.exec(value)?.[1]
 }
 
-async function resolveAudioDataUrl(request: TranscribeRequest, context: ProviderContext): Promise<string> {
-  if (request.audioData?.trim()) {
-    const value = request.audioData.trim()
-    if (value.startsWith('data:')) return value
-    return `data:${normalizeMimeType(request.mimeType)};base64,${value}`
-  }
-  if (!request.url) throw new Error('MiMo ASR requires input.audioData or input.url.')
-  const response = await fetch(request.url, { signal: AbortSignal.timeout(getProviderTimeoutMs(context)) })
-  if (!response.ok) throw new Error(`Failed to download audio for MiMo ASR: ${response.status}`)
-  const audio = Buffer.from(await response.arrayBuffer())
-  if (audio.length === 0) throw new Error('Downloaded audio for MiMo ASR was empty.')
-  const mimeType = normalizeMimeType(request.mimeType ?? response.headers.get('content-type') ?? undefined)
-  return `data:${mimeType};base64,${audio.toString('base64')}`
+function fileToAudioDataUrl(file: TranscribeRequest['file']): string {
+  return `data:${normalizeMimeType(file.mimeType)};base64,${file.data.toString('base64')}`
 }
 
 function normalizeMimeType(value?: string): string {

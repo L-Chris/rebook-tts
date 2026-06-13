@@ -1,20 +1,17 @@
-import { BilibiliAsrProvider } from './bilibili-asr.js'
 import { EdgeTtsProvider } from './edge.js'
-import type { AsrProvider, ProviderContext, ProviderFieldDefinition, SynthesizeRequest, TranscribeRequest, TtsProvider, TtsVoice } from '../../types.js'
+import type { ProviderContext, ProviderFieldDefinition, SynthesizeRequest, TtsProvider, TtsVoice } from '../../types.js'
 
-export class DefaultProvider implements TtsProvider, AsrProvider {
+export class DefaultProvider implements TtsProvider {
   readonly id = 'default'
   readonly name = 'Default'
-  readonly capabilities = { tts: true, ttsStreaming: true, asr: true }
+  readonly capabilities = { tts: true, ttsStreaming: true }
   readonly fields: ProviderFieldDefinition[]
 
   constructor(
     private readonly edge = new EdgeTtsProvider('default'),
-    private readonly bilibili = new BilibiliAsrProvider('default'),
   ) {
     this.fields = [
       ...this.edge.fields,
-      ...this.bilibili.fields,
     ]
   }
 
@@ -28,9 +25,5 @@ export class DefaultProvider implements TtsProvider, AsrProvider {
 
   streamSynthesize(request: SynthesizeRequest, context?: ProviderContext) {
     return this.edge.streamSynthesize(request, context)
-  }
-
-  transcribe(request: TranscribeRequest) {
-    return this.bilibili.transcribe(request)
   }
 }

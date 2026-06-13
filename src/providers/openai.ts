@@ -170,11 +170,10 @@ export class OpenAiProvider implements TtsProvider, AsrProvider, VoiceCloneProvi
 
   async transcribe(request: TranscribeRequest, context: ProviderContext = {}): Promise<TranscribeResult> {
     const apiKey = getApiKey(context)
-    const audio = await resolveTranscriptionAudio(request)
     const responseFormat = normalizeTranscriptionResponseFormat(request.responseFormat, request.format)
     const form = new FormData()
     form.set('model', request.model ?? getConfigString(context, 'asrModel') ?? DEFAULT_ASR_MODEL)
-    form.set('file', new Blob([audio.data], { type: audio.mimeType }), audio.fileName)
+    form.set('file', new Blob([request.file.data], { type: request.file.mimeType }), request.file.fileName)
     form.set('response_format', responseFormat)
     const language = normalizeLanguage(request.language)
     if (language) form.set('language', language)
@@ -302,21 +301,6 @@ function parseAudioData(value: string, mimeType: string | undefined): { data: Bu
   }
 }
 
-async function resolveTranscriptionAudio(request: TranscribeRequest): Promise<{ data: Buffer, mimeType: string, fileName: string }> {
-  if (request.audioData?.trim()) return parseAudioData(request.audioData.trim(), request.mimeType)
-  if (request.url?.trim()) {
-    const response = await fetch(request.url.trim())
-    if (!response.ok) throw new Error(`Failed to download audio for OpenAI transcription: ${response.status}`)
-    const mimeType = response.headers.get('content-type')?.split(';')[0]?.trim() || request.mimeType || 'application/octet-stream'
-    return {
-      data: Buffer.from(await response.arrayBuffer()),
-      mimeType,
-      fileName: getFileNameFromUrl(request.url.trim(), mimeType),
-    }
-  }
-  throw new Error('OpenAI ASR requires file, url, or audioData.')
-}
-
 function getAudioFileName(mimeType: string): string {
   if (mimeType.includes('wav')) return 'voice.wav'
   if (mimeType.includes('mpeg') || mimeType.includes('mp3')) return 'voice.mp3'
@@ -326,13 +310,4 @@ function getAudioFileName(mimeType: string): string {
   if (mimeType.includes('webm')) return 'voice.webm'
   if (mimeType.includes('mp4')) return 'voice.mp4'
   return 'voice.bin'
-}
-
-function getFileNameFromUrl(value: string, mimeType: string): string {
-  try {
-    const name = new URL(value).pathname.split('/').filter(Boolean).pop()
-    return name || getAudioFileName(mimeType)
-  } catch {
-    return getAudioFileName(mimeType)
-  }
 }

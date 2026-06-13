@@ -87,9 +87,11 @@ export interface TtsProvider {
 export interface TranscribeRequest {
   provider?: string
   model?: string
-  url?: string
-  audioData?: string
-  mimeType?: string
+  file: {
+    data: Buffer
+    mimeType: string
+    fileName: string
+  }
   language?: string
   prompt?: string
   responseFormat?: 'json' | 'text' | 'srt' | 'verbose_json' | 'vtt' | 'diarized_json'

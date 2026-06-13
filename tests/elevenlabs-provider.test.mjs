@@ -94,7 +94,7 @@ test('ElevenLabs provider sends speech-to-text requests', async () => {
       url: String(url),
       headers: init.headers,
       modelId: init.body.get('model_id'),
-      sourceUrl: init.body.get('source_url'),
+      file: init.body.get('file'),
       languageCode: init.body.get('language_code'),
     }
     return new Response(JSON.stringify({
@@ -109,7 +109,11 @@ test('ElevenLabs provider sends speech-to-text requests', async () => {
   const provider = new ElevenLabsProvider()
   const result = await provider.transcribe({
     model: 'scribe_v1',
-    url: 'https://example.com/audio.mp3',
+    file: {
+      data: Buffer.alloc(256, 1),
+      mimeType: 'audio/wav',
+      fileName: 'sample.wav',
+    },
     language: 'en',
     format: 'raw',
   }, {
@@ -124,7 +128,7 @@ test('ElevenLabs provider sends speech-to-text requests', async () => {
   assert.equal(captured.url, 'https://api.elevenlabs.io/v1/speech-to-text')
   assert.equal(captured.headers['xi-api-key'], 'test-eleven-key')
   assert.equal(captured.modelId, 'scribe_v1')
-  assert.equal(captured.sourceUrl, 'https://example.com/audio.mp3')
+  assert.equal(captured.file.type, 'audio/wav')
   assert.equal(captured.languageCode, 'en')
   assert.equal(result.text, 'Recognized text')
   assert.equal(result.raw.text, 'Recognized text')

@@ -109,7 +109,7 @@ export class MockAsrProvider implements AsrProvider {
   readonly capabilities = { asr: true }
 
   async transcribe(request: TranscribeRequest) {
-    const target = request.url ?? (request.audioData ? 'inline audio' : 'unknown audio')
+    const target = request.file ? 'inline audio' : 'unknown audio'
     const text = `Mock transcript for ${target}`
     return {
       provider: this.id,

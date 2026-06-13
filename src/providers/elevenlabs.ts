@@ -164,14 +164,7 @@ export class ElevenLabsProvider implements TtsProvider, AsrProvider, SoundEffect
     const language = normalizeLanguageCode(request.language)
     if (language) form.set('language_code', language)
 
-    if (request.url?.trim()) {
-      form.set('source_url', request.url.trim())
-    } else if (request.audioData?.trim()) {
-      const audio = parseAudioData(request.audioData.trim(), request.mimeType)
-      form.set('file', new Blob([audio.data], { type: audio.mimeType }), audio.fileName)
-    } else {
-      throw new Error('ElevenLabs ASR requires url or audioData.')
-    }
+    form.set('file', new Blob([request.file.data], { type: request.file.mimeType }), request.file.fileName)
 
     const response = await fetch(`${getBaseUrl(context)}/speech-to-text`, {
       method: 'POST',

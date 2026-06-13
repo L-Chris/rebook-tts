@@ -63,7 +63,7 @@ test('GET /v1/models returns OpenAI-style model objects', async () => {
   const defaultProvider = payload.data.find(model => model.id === 'default')
   assert.equal(defaultProvider.capabilities.tts, true)
   assert.equal(defaultProvider.capabilities.ttsStreaming, true)
-  assert.equal(defaultProvider.capabilities.asr, true)
+  assert.equal(defaultProvider.capabilities.asr, undefined)
   const modelIds = payload.data.map(model => model.id)
   assert.ok(!modelIds.includes('edge'))
   assert.ok(!modelIds.includes('bilibili-asr'))
@@ -426,6 +426,26 @@ test('POST /v1/audio/transcriptions accepts multipart file uploads', async () =>
 
   assert.equal(response.status, 200)
   assert.deepEqual(payload, { text: 'Mock transcript for inline audio' })
+})
+
+test('POST /v1/audio/transcriptions only accepts multipart file input', async () => {
+  for (const field of ['url', 'audioData']) {
+    const form = new FormData()
+    form.set('provider', 'mock-asr')
+    form.set('model', 'mock-asr-model')
+    form.set(field, field === 'url'
+      ? 'https://example.com/audio.wav'
+      : `data:audio/wav;base64,${createTinyWav().toString('base64')}`)
+
+    const response = await fetch(`${baseUrl}/v1/audio/transcriptions`, {
+      method: 'POST',
+      body: form,
+    })
+    const payload = await response.json()
+
+    assert.equal(response.status, 400)
+    assert.match(payload.error, /file is required/)
+  }
 })
 
 test('POST /v1/audio/transcriptions ignores legacy model aliases', async () => {
