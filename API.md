@@ -4,30 +4,11 @@
 
 ## 资料来源
 
-- OpenAI Create speech: https://developers.openai.com/api/reference/resources/audio/subresources/speech/methods/create
-- OpenAI Create transcription: https://developers.openai.com/api/reference/resources/audio/subresources/transcriptions/methods/create
-- OpenAI Create voice: https://developers.openai.com/api/reference/resources/audio/subresources/voices/methods/create
-- ElevenLabs TTS: https://elevenlabs.io/docs/api-reference/text-to-speech/convert
-- ElevenLabs STT: https://elevenlabs.io/docs/api-reference/speech-to-text/convert
-- ElevenLabs sound effects: https://elevenlabs.io/docs/api-reference/text-to-sound-effects/convert
-- ElevenLabs voice design: https://elevenlabs.io/docs/api-reference/text-to-voice/design
-- ElevenLabs IVC voice clone: https://elevenlabs.io/docs/api-reference/voices/ivc/create
-- ElevenLabs audio isolation: https://elevenlabs.io/docs/api-reference/audio-isolation/convert
-- Cartesia TTS: https://docs.cartesia.ai/api-reference/tts/bytes
-- Cartesia STT: https://docs.cartesia.ai/api-reference/stt/transcribe
-- Cartesia voice clone: https://docs.cartesia.ai/api-reference/voices/clone
-- Cartesia list voices: https://docs.cartesia.ai/api-reference/voices/list
-- Gradium TTS REST: https://docs.gradium.ai/api-reference/endpoint/tts-post
-- Gradium TTS WebSocket: https://docs.gradium.ai/api-reference/endpoint/tts-websocket
-- Gradium STT REST: https://docs.gradium.ai/api-reference/endpoint/stt-post
-- Gradium voice clone: https://docs.gradium.ai/api-reference/endpoint/create-voice
-- MiMo OpenAI-compatible chat API: https://mimo.mi.com/docs/en-US/api/chat/openai-api
-- MiMo V2.5 speech synthesis guide: https://mimo.mi.com/docs/en-US/usage-guide/speech-synthesis-v2.5
-- MiMo rate/model list: https://mimo.mi.com/docs/zh-CN/api/guidance/rate-limit
+各接口表格的 `OpenAI 规范` 和 provider 表头已内联链接到对应官方文档；没有官方对应接口的 Voxout 扩展表格会链接到 provider 最接近的 API 文档。
 
 ## Provider 配置通用字段
 
-| 实际传参 | OpenAI 规范 | OpenAI | ElevenLabs | Cartesia | Gradium | MiMo | Default | 接受的透传参数 |
+| 实际传参 | [OpenAI 规范][openai-api] | [OpenAI][openai-api] | [ElevenLabs][elevenlabs-api] | [Cartesia][cartesia-api] | [Gradium][gradium-api] | [MiMo][mimo-chat-api] | Default | 接受的透传参数 |
 |---|---|---|---|---|---|---|---|---|
 | `accountId` | 无 | 仅用于 Voxout voice 关联表 | 同左 | 同左 | 同左 | 同左 | 同左 | 不下发给 provider |
 | `timeoutMs` | 无 | Voxout 调用超时 | Voxout 调用超时 | Voxout 调用超时 | HTTP 调用超时；WebSocket 流也使用该超时 | HTTP 调用和下载超时 | Edge TTS `timeout`；voice catalog 下载超时另用 `voicesTimeoutMs` | 不下发，除 Default/Edge 映射到库参数 |
@@ -36,7 +17,7 @@
 
 生成语音。请求体是 JSON。非流式返回音频 bytes；`stream_format` 存在时返回音频流或 SSE。
 
-| 实际传参 | OpenAI 规范 | OpenAI | ElevenLabs | Cartesia | Gradium | MiMo | Default | 接受的透传参数 |
+| 实际传参 | [OpenAI 规范][openai-speech] | [OpenAI][openai-speech] | [ElevenLabs][elevenlabs-tts] | [Cartesia][cartesia-tts] | [Gradium][gradium-tts-rest] | [MiMo][mimo-tts] | Default | 接受的透传参数 |
 |---|---|---|---|---|---|---|---|---|
 | `model`，必填，除非 `provider` 显式指定 | 必填；官方 speech model | `model` | `model_id`，默认 `ttsModel` 或 `eleven_multilingual_v2` | `model_id`，默认 `ttsModel` 或 `sonic-3.5` | `model_name`，默认 `ttsModel` 或 `default` | `model`，默认 `ttsModel` 或 `mimo-v2.5-tts`；data URL voice 时改用 `voiceCloneModel` | 不使用 | 无 |
 | `provider`，可选 | 无 | 只用于路由；省略时 OpenAI model 或未知 model 路由到 OpenAI | 只用于路由 | 只用于路由 | 只用于路由 | 只用于路由 | 只用于路由 | 无 |
@@ -52,7 +33,7 @@
 
 语音转文字。请求体是 `multipart/form-data`。为贴近 OpenAI 规范，当前只接受 `file` 输入；`url`、`audioData`、`mimeType` 不再作为该接口入参。
 
-| 实际传参 | OpenAI 规范 | OpenAI | ElevenLabs | Cartesia | Gradium | MiMo | Default | 接受的透传参数 |
+| 实际传参 | [OpenAI 规范][openai-transcription] | [OpenAI][openai-transcription] | [ElevenLabs][elevenlabs-stt] | [Cartesia][cartesia-stt] | [Gradium][gradium-stt] | [MiMo][mimo-asr] | Default | 接受的透传参数 |
 |---|---|---|---|---|---|---|---|---|
 | `file`，必填 file | 官方必填 `file`，支持常见音频格式 | `file` | `file` | `file` | request body bytes | 内部转 data URL 放入 `input_audio.data` | 不支持 | 无 |
 | `model`，必填，除非 `provider` 显式指定 | 官方 ASR model | `model` | `model_id`，默认 `asrModel` 或 `scribe_v2` | `model`，默认 `asrModel` 或 `ink-whisper` | query `model`，默认 `asrModel` 或 `default` | `model`，默认 `asrModel` 或 `mimo-v2.5-asr` | 不支持 | 无 |
@@ -68,7 +49,7 @@
 
 生成音效。请求体是 JSON。OpenAI 官方当前没有对应的 `/v1/audio/effect` 规范；这是 Voxout 扩展接口。
 
-| 实际传参 | OpenAI 规范 | OpenAI | ElevenLabs | Cartesia | Gradium | MiMo | Default | 接受的透传参数 |
+| 实际传参 | OpenAI 规范 | OpenAI | [ElevenLabs][elevenlabs-sfx] | Cartesia | Gradium | MiMo | Default | 接受的透传参数 |
 |---|---|---|---|---|---|---|---|---|
 | `provider`，必填 | 无 | 不支持 | 只用于路由 | 不支持 | 不支持 | 不支持 | 不支持 | 无 |
 | `input`，必填 string | 无 | 不支持 | `text` | 不支持 | 不支持 | 不支持 | 不支持 | 无 |
@@ -83,7 +64,7 @@
 
 人声/音频隔离。请求体是 `multipart/form-data`。OpenAI 官方当前没有对应的 `/v1/audio/isolation` 规范；这是 Voxout 扩展接口。为保持音频上传接口一致，当前只接受 `file` 输入；`audio`、`url`、`audioData`、`mimeType` 不再作为该接口入参。
 
-| 实际传参 | OpenAI 规范 | OpenAI | ElevenLabs | Cartesia | Gradium | MiMo | Default | 接受的透传参数 |
+| 实际传参 | OpenAI 规范 | OpenAI | [ElevenLabs][elevenlabs-isolation] | Cartesia | Gradium | MiMo | Default | 接受的透传参数 |
 |---|---|---|---|---|---|---|---|---|
 | `provider` 或 `model`，必填其一 | 无 | 不支持 | 只用于路由 | 不支持 | 不支持 | 不支持 | 不支持 | 无 |
 | `file`，必填 file | 无 | 不支持 | Voxout provider 内部映射成 ElevenLabs `audio` multipart file | 不支持 | 不支持 | 不支持 | 不支持 | 无 |
@@ -95,7 +76,7 @@
 
 通过文本描述设计声音。请求体是 JSON。OpenAI 官方当前没有对应的 `/v1/audio/design` 规范；这是 Voxout 扩展接口。
 
-| 实际传参 | OpenAI 规范 | OpenAI | ElevenLabs | Cartesia | Gradium | MiMo | Default | 接受的透传参数 |
+| 实际传参 | OpenAI 规范 | OpenAI | [ElevenLabs][elevenlabs-design] | Cartesia | Gradium | [MiMo][mimo-tts] | Default | 接受的透传参数 |
 |---|---|---|---|---|---|---|---|---|
 | `provider`，必填 | 无 | 不支持 | 只用于路由 | 不支持 | 不支持 | 只用于路由 | 不支持 | 无 |
 | `input`，必填 string | 无 | 不支持 | `voice_description` | 不支持 | 不支持 | voice description prompt | 不支持 | 无 |
@@ -110,7 +91,7 @@
 
 上传音频素材克隆声音。请求体是 `multipart/form-data`。
 
-| 实际传参 | OpenAI 规范 | OpenAI | ElevenLabs | Cartesia | Gradium | MiMo | Default | 接受的透传参数 |
+| 实际传参 | [OpenAI 规范][openai-voice] | [OpenAI][openai-voice] | [ElevenLabs][elevenlabs-ivc] | [Cartesia][cartesia-clone] | [Gradium][gradium-clone] | [MiMo][mimo-tts] | Default | 接受的透传参数 |
 |---|---|---|---|---|---|---|---|---|
 | `provider`，可选，缺省 `openai` | 无 | 只用于路由 | 只用于路由 | 只用于路由 | 只用于路由 | 只用于路由 | 不支持 | 无 |
 | `name`，必填 string | 必填 | `name` | `name` | `name` | `name` | 本地保存 name | 不支持 | 无 |
@@ -122,21 +103,21 @@
 
 ## GET `/v1/models`
 
-| 实际传参 | OpenAI 规范 | OpenAI | ElevenLabs | Cartesia | Gradium | MiMo | Default | 接受的透传参数 |
+| 实际传参 | [OpenAI 规范][openai-models] | [OpenAI][openai-models] | [ElevenLabs][elevenlabs-api] | [Cartesia][cartesia-api] | [Gradium][gradium-api] | [MiMo][mimo-rate-limit] | Default | 接受的透传参数 |
 |---|---|---|---|---|---|---|---|---|
 | 无 | OpenAI list models 返回 `{ object: "list", data: [...] }` | 聚合为 model object | 聚合为 model object | 聚合为 model object | 聚合为 model object | 聚合为 model object | 聚合为 model object | 无 |
 | 响应 | 官方 model object 更丰富 | `id=openai`，带 capabilities | `id=elevenlabs` | `id=cartesia` | `id=gradium` | `id=mimo` | `id=default`，仅 TTS capabilities | 返回 `{ object: "list", data: [{ id, object, created, owned_by, capabilities }] }` |
 
 ## GET `/api/providers`
 
-| 实际传参 | OpenAI 规范 | OpenAI | ElevenLabs | Cartesia | Gradium | MiMo | Default | 接受的透传参数 |
+| 实际传参 | OpenAI 规范 | [OpenAI][openai-api] | [ElevenLabs][elevenlabs-api] | [Cartesia][cartesia-api] | [Gradium][gradium-api] | [MiMo][mimo-chat-api] | Default | 接受的透传参数 |
 |---|---|---|---|---|---|---|---|---|
 | 无 | 无 | 返回 provider 定义、fields、enabled、configured | 同左 | 同左 | 同左 | 同左 | 同左 | 无 |
 | 响应 | 无 | secrets 被 mask | secrets 被 mask | secrets 被 mask | secrets 被 mask | secrets 被 mask | secrets 被 mask | 内部测试 provider 默认不返回 |
 
 ## PUT `/api/providers/:providerId/config`
 
-| 实际传参 | OpenAI 规范 | OpenAI | ElevenLabs | Cartesia | Gradium | MiMo | Default | 接受的透传参数 |
+| 实际传参 | OpenAI 规范 | [OpenAI][openai-api] | [ElevenLabs][elevenlabs-api] | [Cartesia][cartesia-api] | [Gradium][gradium-api] | [MiMo][mimo-chat-api] | Default | 接受的透传参数 |
 |---|---|---|---|---|---|---|---|---|
 | `enabled` | 无 | 启停 provider | 同左 | 同左 | 同左 | 同左 | 同左 | 无 |
 | `secrets.apiKey` | 无 | `Authorization: Bearer` | `xi-api-key` | `Authorization: Bearer` | `x-api-key` | `api-key` 和 `Authorization: Bearer` | 不使用；Edge 可配置 `trustedClientToken` | 仅 provider 读取的 secret 会下发 |
@@ -147,7 +128,7 @@
 
 ## GET `/api/voices` 和 `/api/providers/:providerId/voices`
 
-| 实际传参 | OpenAI 规范 | OpenAI | ElevenLabs | Cartesia | Gradium | MiMo | Default | 接受的透传参数 |
+| 实际传参 | OpenAI 规范 | [OpenAI][openai-voice] | [ElevenLabs][elevenlabs-voices] | [Cartesia][cartesia-voices] | [Gradium][gradium-clone] | [MiMo][mimo-tts] | Default | 接受的透传参数 |
 |---|---|---|---|---|---|---|---|---|
 | `/api/voices?provider=...` 可选 provider | 无 | 过滤 Voxout 持久化 voices | 同左 | 同左 | 同左 | 同左 | 同左 | 无 |
 | `/api/providers/:providerId/voices` 必填 provider path | 无 | 内置 OpenAI voices + 持久化 voices | 请求 ElevenLabs `/v2/voices` + 持久化 voices | 请求 Cartesia `/voices` + 持久化 voices | 请求 Gradium `/voices/` + 持久化 voices | 内置 MiMo voices + 持久化 voices | 请求 Edge voice catalog + 持久化 voices | 无 |
@@ -155,8 +136,35 @@
 
 ## Provider 特别说明
 
-| 实际传参 | OpenAI 规范 | OpenAI | ElevenLabs | Cartesia | Gradium | MiMo | Default | 接受的透传参数 |
+| 实际传参 | [OpenAI 规范][openai-api] | [OpenAI][openai-api] | [ElevenLabs][elevenlabs-api] | [Cartesia][cartesia-api] | [Gradium][gradium-api] | [MiMo][mimo-chat-api] | Default | 接受的透传参数 |
 |---|---|---|---|---|---|---|---|---|
 | Default provider | 无 | 不适用 | 不适用 | 不适用 | 不适用 | 不适用 | TTS 实际是 Edge TTS；不再注册 ASR capability。 | 无 |
 | OpenAI `voice` object `{ id }` | 官方支持 | 当前 Voxout 只接受 string voice；如需完全兼容官方 custom voice object，需要改 `normalizeOpenAiSpeechInput` | 不适用 | 不适用 | 不适用 | 不适用 | 不适用 | 无 |
 | OpenAI transcription streaming | 官方 `stream=true` | OpenAI 直接透传 SSE；MiMo 转成 OpenAI transcript SSE；其他 provider 不支持 | 不适用 | 不适用 | 不适用 | 不适用 | 不适用 | 无 |
+
+[openai-api]: https://developers.openai.com/api/reference
+[openai-speech]: https://developers.openai.com/api/reference/resources/audio/subresources/speech/methods/create
+[openai-transcription]: https://developers.openai.com/api/reference/resources/audio/subresources/transcriptions/methods/create
+[openai-voice]: https://developers.openai.com/api/reference/resources/audio/subresources/voices/methods/create
+[openai-models]: https://developers.openai.com/api/reference/models/list
+[elevenlabs-api]: https://elevenlabs.io/docs/api-reference
+[elevenlabs-tts]: https://elevenlabs.io/docs/api-reference/text-to-speech/convert
+[elevenlabs-stt]: https://elevenlabs.io/docs/api-reference/speech-to-text/convert
+[elevenlabs-sfx]: https://elevenlabs.io/docs/api-reference/text-to-sound-effects/convert
+[elevenlabs-design]: https://elevenlabs.io/docs/api-reference/text-to-voice/design
+[elevenlabs-ivc]: https://elevenlabs.io/docs/api-reference/voices/ivc/create
+[elevenlabs-isolation]: https://elevenlabs.io/docs/api-reference/audio-isolation/convert
+[elevenlabs-voices]: https://elevenlabs.io/docs/api-reference/voices/search
+[cartesia-api]: https://docs.cartesia.ai/api-reference
+[cartesia-tts]: https://docs.cartesia.ai/api-reference/tts/bytes
+[cartesia-stt]: https://docs.cartesia.ai/api-reference/stt/transcribe
+[cartesia-clone]: https://docs.cartesia.ai/api-reference/voices/clone
+[cartesia-voices]: https://docs.cartesia.ai/api-reference/voices/list
+[gradium-api]: https://docs.gradium.ai/api-reference
+[gradium-tts-rest]: https://docs.gradium.ai/api-reference/endpoint/tts-post
+[gradium-stt]: https://docs.gradium.ai/api-reference/endpoint/stt-post
+[gradium-clone]: https://docs.gradium.ai/api-reference/endpoint/create-voice
+[mimo-chat-api]: https://mimo.mi.com/docs/en-US/api/chat/openai-api
+[mimo-asr]: https://mimo.mi.com/docs/en-US/api/audio/Speech-Recognition
+[mimo-tts]: https://mimo.mi.com/docs/en-US/usage-guide/speech-synthesis-v2.5
+[mimo-rate-limit]: https://mimo.mi.com/docs/zh-CN/api/guidance/rate-limit
