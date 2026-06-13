@@ -26,6 +26,7 @@ test('ElevenLabs provider sends text-to-speech requests', async () => {
   const result = await provider.synthesize({
     voice: 'voice-123',
     outputFormat: 'mp3_44100_192',
+    speed: 1.15,
     id: 'tts',
     text: 'Hello from ElevenLabs.',
   }, {
@@ -44,6 +45,7 @@ test('ElevenLabs provider sends text-to-speech requests', async () => {
   assert.deepEqual(captured.body, {
     text: 'Hello from ElevenLabs.',
     model_id: 'eleven_multilingual_v2',
+    voice_settings: { speed: 1.15 },
   })
 })
 
@@ -66,6 +68,7 @@ test('ElevenLabs provider streams text-to-speech requests', async () => {
     voice: 'voice-123',
     outputFormat: 'mp3_44100_192',
     streamFormat: 'audio',
+    speed: 2,
     id: 'tts',
     text: 'Hello from ElevenLabs.',
   }, {
@@ -84,6 +87,7 @@ test('ElevenLabs provider streams text-to-speech requests', async () => {
   assert.deepEqual(captured.body, {
     text: 'Hello from ElevenLabs.',
     model_id: 'eleven_multilingual_v2',
+    voice_settings: { speed: 1.2 },
   })
 })
 

@@ -121,6 +121,7 @@ export class ElevenLabsProvider implements TtsProvider, AsrProvider, SoundEffect
       text,
       model_id: request.model ?? getConfigString(context, 'ttsModel') ?? DEFAULT_TTS_MODEL,
       language_code: normalizeLanguageCode(request.lang),
+      voice_settings: normalizeVoiceSettings(request),
     }, apiKey)
     return response
   }
@@ -144,6 +145,7 @@ export class ElevenLabsProvider implements TtsProvider, AsrProvider, SoundEffect
         text,
         model_id: request.model ?? getConfigString(context, 'ttsModel') ?? DEFAULT_TTS_MODEL,
         language_code: normalizeLanguageCode(request.lang),
+        voice_settings: normalizeVoiceSettings(request),
       })),
     })
     if (!response.ok) {
@@ -370,6 +372,16 @@ function normalizeLanguageCode(value: string | undefined): string | undefined {
   const normalized = value?.trim()
   if (!normalized || normalized === 'auto') return undefined
   return normalized
+}
+
+function normalizeVoiceSettings(request: SynthesizeRequest): { speed?: number } | undefined {
+  const speed = normalizeSpeed(request.speed)
+  return speed == null ? undefined : { speed }
+}
+
+function normalizeSpeed(value: number | undefined): number | undefined {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return undefined
+  return Math.max(0.7, Math.min(1.2, Number(value.toFixed(2))))
 }
 
 function normalizeVoice(voice: ElevenLabsVoicePayload, provider: string): TtsVoice | null {
