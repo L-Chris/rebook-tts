@@ -294,29 +294,16 @@ function normalizeOpenAiSpeechInput(providerId: string, input: {
   }
 }
 
-async function normalizeAudioIsolationInput(providerId: string, form: Awaited<ReturnType<typeof readMultipartForm>>): Promise<AudioIsolationRequest> {
-  const file = form.files.audio ?? form.files.file
-  const audioSource = form.fields.audioData
-  const url = form.fields.url
-  if (!file && !audioSource && !url) throw new Error('audio file, url, or audioData is required')
-  if (url && !file && !audioSource) {
-    const response = await fetch(url)
-    if (!response.ok) throw new Error(`Failed to download audio for isolation: ${response.status}`)
-    const audio = Buffer.from(await response.arrayBuffer())
-    return {
-      provider: providerId,
-      audioData: `data:${normalizeMimeType(response.headers.get('content-type') ?? undefined)};base64,${audio.toString('base64')}`,
-      mimeType: normalizeMimeType(response.headers.get('content-type') ?? undefined),
-      fileFormat: form.fields.file_format === 'pcm_s16le_16' ? 'pcm_s16le_16' : 'other',
-      previewBase64: form.fields.preview_b64,
-    }
-  }
+function normalizeAudioIsolationInput(providerId: string, form: Awaited<ReturnType<typeof readMultipartForm>>): AudioIsolationRequest {
+  const file = form.files.file
+  if (!file) throw new Error('file is required')
   return {
     provider: providerId,
-    audioData: file
-      ? `data:${normalizeMimeType(file.contentType)};base64,${file.data.toString('base64')}`
-      : audioSource,
-    mimeType: file ? normalizeMimeType(file.contentType) : form.fields.mimeType,
+    file: {
+      data: file.data,
+      mimeType: normalizeMimeType(file.contentType),
+      fileName: file.fileName,
+    },
     fileFormat: form.fields.file_format === 'pcm_s16le_16' ? 'pcm_s16le_16' : 'other',
     previewBase64: form.fields.preview_b64,
   }

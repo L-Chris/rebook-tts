@@ -124,8 +124,11 @@ export interface SoundEffectRequest {
 
 export interface AudioIsolationRequest {
   provider?: string
-  audioData: string
-  mimeType?: string
+  file: {
+    data: Buffer
+    mimeType: string
+    fileName: string
+  }
   fileFormat?: 'pcm_s16le_16' | 'other'
   previewBase64?: string
 }

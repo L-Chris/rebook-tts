@@ -269,7 +269,7 @@ test('POST /v1/audio/effect requires provider and OpenAI-style field names', asy
 test('POST /v1/audio/isolation returns processed audio bytes', async () => {
   const form = new FormData()
   form.set('model', 'mock')
-  form.set('audio', new Blob([createTinyWav()], { type: 'audio/wav' }), 'input.wav')
+  form.set('file', new Blob([createTinyWav()], { type: 'audio/wav' }), 'input.wav')
 
   const response = await fetch(`${baseUrl}/v1/audio/isolation`, {
     method: 'POST',
@@ -280,6 +280,41 @@ test('POST /v1/audio/isolation returns processed audio bytes', async () => {
   assert.equal(response.status, 200)
   assert.match(response.headers.get('content-type'), /^audio\/wav/)
   assert.equal(audio.subarray(0, 4).toString('ascii'), 'RIFF')
+})
+
+test('POST /v1/audio/isolation only accepts multipart file input', async () => {
+  const legacyForms = [
+    (() => {
+      const form = new FormData()
+      form.set('model', 'mock')
+      form.set('audio', new Blob([createTinyWav()], { type: 'audio/wav' }), 'input.wav')
+      return form
+    })(),
+    (() => {
+      const form = new FormData()
+      form.set('model', 'mock')
+      form.set('url', 'https://example.com/audio.wav')
+      return form
+    })(),
+    (() => {
+      const form = new FormData()
+      form.set('model', 'mock')
+      form.set('audioData', `data:audio/wav;base64,${createTinyWav().toString('base64')}`)
+      form.set('mimeType', 'audio/wav')
+      return form
+    })(),
+  ]
+
+  for (const form of legacyForms) {
+    const response = await fetch(`${baseUrl}/v1/audio/isolation`, {
+      method: 'POST',
+      body: form,
+    })
+    const payload = await response.json()
+
+    assert.equal(response.status, 400)
+    assert.match(payload.error, /file is required/)
+  }
 })
 
 test('POST /v1/audio/design persists generated voices', async () => {

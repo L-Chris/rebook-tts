@@ -80,15 +80,12 @@
 
 ## POST `/v1/audio/isolation`
 
-人声/音频隔离。请求体是 `multipart/form-data`。OpenAI 官方当前没有对应的 `/v1/audio/isolation` 规范；这是 Voxout 扩展接口。
+人声/音频隔离。请求体是 `multipart/form-data`。OpenAI 官方当前没有对应的 `/v1/audio/isolation` 规范；这是 Voxout 扩展接口。为保持音频上传接口一致，当前只接受 `file` 输入；`audio`、`url`、`audioData`、`mimeType` 不再作为该接口入参。
 
 | 实际传参 | OpenAI 规范 | OpenAI | ElevenLabs | Cartesia | Gradium | MiMo | Default | 接受的透传参数 |
 |---|---|---|---|---|---|---|---|---|
 | `provider` 或 `model`，必填其一 | 无 | 不支持 | 只用于路由 | 不支持 | 不支持 | 不支持 | 不支持 | 无 |
-| `audio` 或 `file`，可选 file | 无 | 不支持 | `audio` multipart file | 不支持 | 不支持 | 不支持 | 不支持 | 无 |
-| `url`，可选 string | 无 | 不支持 | Voxout 先下载，再作为 `audio` 上传 | 不支持 | 不支持 | 不支持 | 不支持 | 无 |
-| `audioData`，可选 base64 或 data URL | 无 | 不支持 | 转成 `audio` 上传 | 不支持 | 不支持 | 不支持 | 不支持 | 无 |
-| `mimeType`，可选 string | 无 | 不支持 | 用于上传 file MIME | 不支持 | 不支持 | 不支持 | 不支持 | 无 |
+| `file`，必填 file | 无 | 不支持 | Voxout provider 内部映射成 ElevenLabs `audio` multipart file | 不支持 | 不支持 | 不支持 | 不支持 | 无 |
 | `file_format`，可选 `pcm_s16le_16` 或 `other` | 无 | 不支持 | `file_format`，缺省 `other` | 不支持 | 不支持 | 不支持 | 不支持 | 无 |
 | `preview_b64`，可选 string | 无 | 不支持 | `preview_b64` | 不支持 | 不支持 | 不支持 | 不支持 | 无 |
 | 响应 | 无 | 不支持 | 隔离后的音频 bytes，MIME 来自 `content-type`，缺省输入 MIME | 不支持 | 不支持 | 不支持 | 不支持 | 不返回 ElevenLabs JSON |

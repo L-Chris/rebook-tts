@@ -272,13 +272,8 @@ function App() {
     const form = new FormData()
     form.set('provider', selectedProvider.id)
     form.set('file_format', isolationForm.fileFormat)
-    if (isolationFile) {
-      form.set('audio', isolationFile)
-    } else if (isolationForm.audioSource.trim()) {
-      appendAudioSource(form, isolationForm.audioSource.trim())
-    } else {
-      throw new Error('Choose an audio file or enter an audio source.')
-    }
+    if (!isolationFile) throw new Error('Choose an audio file.')
+    form.set('file', isolationFile)
 
     const response = await fetch(apiUrl('/v1/audio/isolation', apiBaseUrl), {
       method: 'POST',
@@ -735,12 +730,10 @@ function VoiceCascader({ onChange, value, voiceOptions, voiceTree }) {
 function IsolationTestForm({ file, form, onFileChange, onFormChange }) {
   return (
     <div className="grid gap-3 md:grid-cols-2">
-      <AudioSourceControl
+      <AudioFileControl
         file={file}
-        form={form}
         inputId="isolation-audio-source"
         onFileChange={onFileChange}
-        onFormChange={onFormChange}
       />
       <label className="grid gap-1.5 text-sm font-semibold">
         File format
@@ -807,53 +800,6 @@ function TranscriptionTestForm({ file, form, modelField, onFileChange, onFormCha
           <option value="srt">srt</option>
         </select>
       </label>
-    </div>
-  )
-}
-
-function AudioSourceControl({
-  file,
-  form,
-  inputId,
-  onFileChange,
-  onFormChange,
-  placeholder = 'https://example.com/audio.m4a, data:audio/wav;base64,...',
-}) {
-  const fileId = `${inputId}-file`
-  return (
-    <div className="grid gap-1.5 text-sm font-semibold md:col-span-2">
-      <label htmlFor={inputId}>Audio source</label>
-      <div className="audio-source-control">
-        <textarea
-          id={inputId}
-          className="textarea min-h-24 font-mono text-xs"
-          placeholder={placeholder}
-          value={form.audioSource}
-          onChange={event => {
-            onFileChange(null)
-            onFormChange({ ...form, audioSource: event.target.value })
-          }}
-        />
-        <div className="audio-source-actions">
-          <span className="truncate text-sm font-normal text-slate-500">
-            {file ? file.name : 'Paste an audio source or choose a file'}
-          </span>
-          <label className="btn-secondary shrink-0 cursor-pointer" htmlFor={fileId}>
-            Choose file
-          </label>
-          <input
-            className="sr-only"
-            id={fileId}
-            type="file"
-            accept="audio/*,video/mp4,video/webm"
-            onChange={event => {
-              const nextFile = event.target.files?.[0] ?? null
-              onFileChange(nextFile)
-              if (nextFile) onFormChange({ ...form, audioSource: '' })
-            }}
-          />
-        </div>
-      </div>
     </div>
   )
 }
@@ -1166,7 +1112,6 @@ function defaultEffectForm() {
 
 function defaultIsolationForm() {
   return {
-    audioSource: '',
     fileFormat: 'other',
   }
 }
@@ -1196,14 +1141,6 @@ function defaultTranscriptionForm(provider) {
     model: getProviderField(provider, 'asrModel') ? provider?.config?.asrModel ?? '' : '',
     language: 'auto',
     responseFormat: 'json',
-  }
-}
-
-function appendAudioSource(form, source) {
-  if (/^https?:\/\//i.test(source)) {
-    form.set('url', source)
-  } else {
-    form.set('audioData', source)
   }
 }
 

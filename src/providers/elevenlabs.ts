@@ -204,9 +204,8 @@ export class ElevenLabsProvider implements TtsProvider, AsrProvider, SoundEffect
 
   async isolateAudio(request: AudioIsolationRequest, context: ProviderContext = {}) {
     const apiKey = getApiKey(context)
-    const audio = parseAudioData(request.audioData, request.mimeType)
     const form = new FormData()
-    form.set('audio', new Blob([audio.data], { type: audio.mimeType }), audio.fileName)
+    form.set('audio', new Blob([request.file.data], { type: request.file.mimeType }), request.file.fileName)
     form.set('file_format', request.fileFormat ?? 'other')
     if (request.previewBase64) form.set('preview_b64', request.previewBase64)
 
@@ -222,7 +221,7 @@ export class ElevenLabsProvider implements TtsProvider, AsrProvider, SoundEffect
     }
     return {
       audio: buffer,
-      mimeType: response.headers.get('content-type')?.split(';')[0] || audio.mimeType,
+      mimeType: response.headers.get('content-type')?.split(';')[0] || request.file.mimeType,
       durationMs: 0,
     }
   }

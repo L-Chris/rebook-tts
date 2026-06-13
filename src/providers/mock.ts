@@ -62,8 +62,7 @@ export class MockTtsProvider implements TtsProvider, SoundEffectProvider, AudioI
   }
 
   async isolateAudio(request: AudioIsolationRequest) {
-    const base64 = request.audioData.includes(',') ? request.audioData.split(',').pop() ?? '' : request.audioData
-    return { audio: Buffer.from(base64, 'base64'), mimeType: request.mimeType ?? 'audio/wav', durationMs: 0 }
+    return { audio: request.file.data, mimeType: request.file.mimeType, durationMs: 0 }
   }
 
   async designVoice(request: VoiceDesignRequest): Promise<VoiceDesignResult> {

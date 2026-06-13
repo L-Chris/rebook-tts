@@ -194,8 +194,11 @@ test('ElevenLabs provider sends audio isolation requests', async () => {
 
   const provider = new ElevenLabsProvider()
   const result = await provider.isolateAudio({
-    audioData: `data:audio/wav;base64,${Buffer.from('audio').toString('base64')}`,
-    mimeType: 'audio/wav',
+    file: {
+      data: Buffer.from('audio'),
+      mimeType: 'audio/wav',
+      fileName: 'input.wav',
+    },
   }, {
     config: {},
     secrets: { apiKey: 'test-eleven-key' },
